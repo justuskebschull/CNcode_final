@@ -1,0 +1,366 @@
+---
+title: "mouse vs chicken area correlations"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    keep_tex: yes
+keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Make a dendrogram of coarse chicken excitatory clusters and mouse subareas.
+
+```{r}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(patchwork)
+library(Hmisc)
+library(heatmap3)
+library(qlcMatrix)
+```
+
+load chicken data
+```{r}
+setwd('~/postdoc2/Gedankenpapers/CNevomanuscript/code/snRNAseq/chicken/')
+load('data/ex.RData')
+DimPlot(ex,group.by = 'RNA_snn_res.1')
+```
+
+```{r,fig.width=4,fig.height=3}
+Idents(ex)<-'RNA_snn_res.1' 
+ex<-RenameIdents(ex,'0'='1','8'='2','3'='3','7'='4','5'='5','1'='6','9'='7')
+ex$RNA_snn_res.1.renamed<-Idents(ex)
+DimPlot(ex,group.by = 'RNA_snn_res.1.renamed',pt.size=1.5,label=F,repel=T)
+```
+
+
+```{r}
+all<-ex
+chicken.data<-all@assays$RNA@counts
+chicken<-all
+rm(ex)
+```
+
+
+revert gene names to  ENSGALG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("data/EnsembleID99_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-chicken.data[rownames(chicken.data) %in% conversiontable.notrepeated[,2],]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+
+
+counts_nottranslated<-chicken.data[!rownames(chicken.data) %in% conversiontable.notrepeated[,2],]
+
+chicken.data2<-rbind(counts_translated,counts_nottranslated)
+
+```
+
+
+
+
+
+
+load mouse data, keeping all clusters 
+```{r}
+load(file = '../mouse/data/dataforplotting.RData')
+mouse<-RL
+mouse.data<-mouse@assays$RNA@counts
+```
+
+revert gene names to  ENSMUSG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("../mouse/EnseblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-mouse.data[rownames(mouse.data) %in% conversiontable.notrepeated[,2],]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+
+
+counts_nottranslated<-mouse.data[!rownames(mouse.data) %in% conversiontable.notrepeated[,2],]
+
+mouse.data2<-rbind(counts_translated,counts_nottranslated)
+
+```
+
+
+
+read in ortholog relationships obtained from ensemble biomart
+
+```{r}
+orth.table<-read.csv(file='data/chicken_mouse_orthologs.txt',header=T)
+#throw out anything that isnt onetoone
+orth.table<-orth.table[orth.table[,"Mouse.homology.type"]=="ortholog_one2one",]
+#drop extra columns
+orth.table.clean<-unique(orth.table[,c("Gene.stable.ID",'Mouse.gene.stable.ID','Mouse.gene.name')])
+```
+
+
+throw out what isn't in a 1:1 ortholog
+```{r}
+chicken.data.filtered<-chicken.data2[rownames(chicken.data2) %in% as.character(orth.table.clean$Gene.stable.ID),]
+rownames(chicken.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(chicken.data.filtered),orth.table.clean$Gene.stable.ID)])
+
+mouse.data.filtered<-mouse.data2[rownames(mouse.data2) %in% as.character(orth.table.clean$Mouse.gene.stable.ID),]
+rownames(mouse.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(mouse.data.filtered),orth.table.clean$Mouse.gene.stable.ID)])
+```
+
+```{r}
+chicken.data.filtered2<-chicken.data.filtered[rownames(chicken.data.filtered) %in% rownames(mouse.data.filtered),]
+mouse.data.filtered2<-mouse.data.filtered[rownames(mouse.data.filtered) %in% rownames(chicken.data.filtered2),]
+
+```
+
+now convert them all back to mouse names for simplicity.
+
+replace known ENSMUSG genes with their names, keep the remainder
+```{r}
+#load conversion table
+conversiontable=read.csv("../mouse/EnseblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-chicken.data.filtered2[rownames(chicken.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-chicken.data.filtered2[!rownames(chicken.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+chicken.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+
+
+counts_translated<-mouse.data.filtered2[rownames(mouse.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-mouse.data.filtered2[!rownames(mouse.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+mouse.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+
+
+
+```
+
+Set up seurat objects.
+
+```{r}
+mouse2<-CreateSeuratObject(mouse.data.filtered3)
+mouse2@meta.data<-mouse@meta.data
+mouse2$species<-'mouse'
+Idents(mouse2)<-'subareas'
+chicken2<-CreateSeuratObject(chicken.data.filtered3)
+chicken2@meta.data<-chicken@meta.data
+chicken2$species<-'chicken'
+Idents(chicken2)<-'RNA_snn_res.1.renamed'
+
+mouse2<- NormalizeData(object = mouse2, verbose = FALSE,scale.factor = 1e6)
+chicken2<- NormalizeData(object = chicken2, verbose = FALSE,scale.factor = 1e6)
+
+
+#chickenDEGs<-FindAllMarkers(chicken2,test.use = 'wilcox')
+#save(chickenDEGs,file='chickenDEGs_exRNAres1vsMouse.RData')
+
+#mouseDEGs<-FindAllMarkers(mouse2,test.use = 'wilcox')
+#save(mouseDEGs,file='mouseDEGs_bigsubareas.RData')
+
+
+
+load('data/mouseDEGs_bigsubareas.RData')
+load('data/chickenDEGs_exRNAres1vsMouse.RData')
+```
+
+
+filter differentially expressed genes 
+```{r}
+mouseDEGs.filtered<-mouseDEGs[mouseDEGs$p_val_adj<0.01 & mouseDEGs$avg_logFC>log(2),]
+chickenDEGs.filtered<-chickenDEGs[chickenDEGs$p_val_adj<0.01 & chickenDEGs$avg_logFC>log(2),]
+mouse2@assays$RNA@var.features<-unique(mouseDEGs.filtered$gene)
+chicken2@assays$RNA@var.features<-unique(chickenDEGs.filtered$gene)
+```
+
+
+Calculate cluster averages.
+```{r}
+interestinggenes<-intersect(unique(mouseDEGs.filtered$gene),unique(chickenDEGs.filtered$gene))
+mouseaverage<-AverageExpression(mouse2,features=interestinggenes,verbose=F)
+chickenaverage<-AverageExpression(chicken2,features=interestinggenes,verbose = F)
+```
+
+normalize gene expression.
+```{r}
+mouseaverage<-mouseaverage[[1]]
+chickenaverage<-chickenaverage[[1]]
+```
+```{r}
+mouse.norm<-mouseaverage/rowMeans(mouseaverage)
+chicken.norm<-chickenaverage/rowMeans(chickenaverage)
+colnames(mouse.norm)<-paste0('mouse_',colnames(mouse.norm))
+colnames(chicken.norm)<-paste0('chicken_',colnames(chicken.norm))
+```
+
+
+
+calculate pvalues: shuffle gene expression values across cell types.
+
+```{r}
+repeats=10000
+cuts=20000
+
+p<-replicate(repeats,{
+  htest<-t(apply(chicken.norm,1,sample))
+  colnames(htest)<-colnames(chicken.norm)
+  mtest<-t(apply(mouse.norm,1,sample))
+  colnames(mtest)<-colnames(mouse.norm)
+  res<-rcorr(as.matrix(cbind(mtest,htest)),type="spearman")
+  x<-res[[1]]
+  x<-as.vector(x)
+  x<-x[x!=1]
+  })
+
+h<-hist(as.vector(p),breaks=seq(-1,1,2/cuts),freq=F,)
+
+h2<-h$counts/sum(h$counts)
+c<-cumsum(h2)
+plot(c)
+
+library(Hmisc)
+res<-rcorr(as.matrix(cbind(mouse.norm,chicken.norm)),type="spearman")
+x<-res[[1]]
+pval<-c[round((x+1)*cuts/2)]
+pval2<-matrix(as.vector(pval),nrow=dim(x)[1],ncol=dim(x)[2],byrow = F)
+rownames(pval2)<-rownames(x)
+colnames(pval2)<-colnames(x)
+```
+
+```{r,fig.width=15,fig.height=6}
+library(heatmap3)
+alpha=0.05
+#with bonferroni correction and two sided ness
+#sig<-pval2<alpha/2/(dim(pval2)[1]*dim(pval2)[2]) | pval2> 1-(alpha/2/(dim(pval2)[1]*dim(pval2)[2]))
+#whitout twosidedness
+#sig<-pval2<alpha/(dim(pval2)[1]*dim(pval2)[2]) | pval2> 1-(alpha/(dim(pval2)[1]*dim(pval2)[2]))
+
+#without
+sig<-pval2<alpha | pval2> 1-alpha
+
+
+highlight<-as.data.frame(which(sig,arr.ind=T)) #can we also highlight highest correlation by say a star? would be informative i think.
+highlight$color<-'black'
+
+J<-rowMax(Matrix(x,sparse = T),which = TRUE)
+maxhi<-as.data.frame(which(J$which,arr.ind = T))
+maxhi$color<-'orange'
+
+
+```
+
+plot heatmap
+
+```{r,fig.width=7,fig.height=5.5}
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+
+col1=colorRamp2(c(-1, 0, 1), c("navy", "white", "firebrick3"),space="sRGB")
+
+dend=reorder(as.dendrogram(hclust(as.dist(1-cor(t(x),use="pa")),method = "complete")),1:13,agglo.FUN = mean)
+dend=rev(dendsort(as.dendrogram(hclust(as.dist(1-cor(t(x),use="pa")),method = "complete"))))
+
+
+
+#column annotation
+ha_top<- HeatmapAnnotation(
+  species=c('M','M',"M","M","M","M","C","C","C","C","C","C","C"),
+  col=list(species=c("M"="red","C"="blue")),
+  simple_anno_size=unit(2,"mm")
+)
+
+#row annotation
+ha_left<- rowAnnotation(
+  species=c('M','M',"M","M","M","M","C","C","C","C","C","C","C"),
+  col=list(species=c("M"="red","C"="blue")),
+  simple_anno_size=unit(2,"mm")
+)
+
+mat<-x
+Heatmap(mat,
+        name='correlation',
+        col=col1,top_annotation = ha_top,left_annotation = ha_left,
+#        clustering_distance_rows  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        clustering_distance_columns  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        row_dend_reorder =FALSE, column_dend_reorder = F,
+        cluster_rows = (dend),cluster_columns = (dend),
+        row_dend_width = unit(30, "mm"),
+        column_dend_height = unit(30,"mm"),
+        row_split=2,column_split = 2,
+        border=T,
+        cell_fun = function(j, i, x, y, width, height, fill) {
+            if(sig[i,j]>0)
+            grid.points(x, y,pch=16,size = unit(2, "mm"))
+          }
+)
+```
+
+
+produce bootstrapped dendrogram
+```{r}
+datanorm<-as.matrix(cbind(mouse.norm,chicken.norm))
+colnames(datanorm)<-c(colnames(mouseaverage),colnames(chickenaverage))
+```
+
+
+```{r}
+library(pvclust)
+result <- pvclust(as.matrix(datanorm), nboot=1000,method.hclust = "average",method.dist = function(z){as.dist(1-cor(z,use="pa",method="spearman"))})
+```
+
+```{r,fig.height=4}
+library(dendextend)
+library(circlize)
+
+speciespal=c('gold','grey')
+species=as.factor(c('M','M',"M","M","M","M","C","C","C","C","C","C","C"))
+levels(species)<-c(1,2)
+
+library(ggplot2)
+library(scales)
+                                       # Amount of default colors
+CLpal <- hue_pal()(7)                             # Identify hex codes
+
+
+bars=data.frame(CL=c(rep('grey',6),CLpal),animal=speciespal[(species)]);
+
+
+dend <- (as.dendrogram(result))
+dend %>% pvclust_show_signif_gradient(result,signif_type = 'au',
+                                      signif_col_fun = colorRampPalette(c('white','white','black'))) %>%
+  set("nodes_pch", 19) %>%
+  set("branches_lwd", 2) %>%
+   plot()
+colored_bars(colors = bars, dend = dend, sort_by_labels_order = TRUE)
+
+result %>% text
+```
+
+
+```{r}
+
+```

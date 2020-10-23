@@ -1,0 +1,377 @@
+---
+title: "Fig4 plots"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    keep_tex: yes
+keep_md: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Analyse chicken data to make basic plots for Fig.4 and the associated supplemental figures.
+
+```{r}
+library(Seurat)
+library(ComplexHeatmap)
+library(patchwork)
+library(ggplot2)
+library(RColorBrewer)
+library(pvclust)
+library(dendextend)
+```
+
+```{r}
+setwd('~/postdoc2/Gedankenpapers/CNevomanuscript/code/snRNAseq/chicken/') #set to your datapath
+```
+
+Load data
+```{r}
+load('data/neurons.RData')
+load('data/ex.RData')
+load('data/inh_clean.RData')
+merged<-merge(ex,inh)
+```
+
+
+make tsne plot of all good chicken neurons
+```{r}
+merged <- FindVariableFeatures(object = merged,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+merged <- ScaleData(object = merged,vars.to.regress = c('FACS','nFeature_RNA'))
+
+
+source('../helperfunctions/pc_modification_functions_S3_forRNA.R')
+
+merged<-RunTruncatedPCA(merged,n.genes.pc = 60,npcs=40)
+ElbowPlot(object = merged)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#merged <- JackStraw(object = merged, dims=30)
+#merged <- ScoreJackStraw(merged,dims=1:30)
+#JackStrawPlot(object = merged,dims=1:30)
+```
+```{r}
+usefuldims=1:12
+dims.remove=c()
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+merged<- FindNeighbors(object = merged,dims=usefuldims)
+
+merged <- RunTSNE(object = merged, dims = usefuldims, perplexity=30, dim.embed = 2)
+```
+
+plot marker gene expression of all chicken neurons
+```{r,fig.width=8,fig.height=6}
+FeaturePlot(merged,c("SNAP25","SLC17A6","GAD1","SLC6A5"),pt.size = 1.5)
+```
+
+Plot coarse clustering results of chicken excitatory cells
+```{r,fig.width=4,fig.height=3}
+Idents(ex)<-'RNA_snn_res.1' 
+ex<-RenameIdents(ex,'0'='1','8'='2','3'='3','7'='4','5'='5','1'='6','9'='7')
+ex$RNA_snn_res.1.renamed<-Idents(ex)
+DimPlot(ex,group.by = 'RNA_snn_res.1.renamed',pt.size=1.5,label=F,repel=T)
+```
+
+rename hihg resolution clusters
+```{r,fig.width=6,fig.height=6}
+Idents(ex)<-'merged.res.3.m' 
+ex<-RenameIdents(ex,'ex_0_1'='Med.A1','ex_0_0'='Med.B1',
+                 'ex_M_7'='Med.B2','ex_M_3'='Med.B3','ex_M_4'='Med.B4','ex_M_1'='Med.B5',
+                 'ex_M_2'='MedL.A1','ex_M_8'='MedL.B1',
+                 'ex_IN_0'='IntP.A1','ex_IN_2'='IntP.A2',
+                 'ex_IN_1'='IntP.B1','ex_IN_3'='IntP.B2',
+                 'ex_M_6'='IntX.A1','ex_M_9'='IntX.B1','ex_M_5'='IntX.B2','ex_M_10'='IntX.A2','ex_M_0'='IntX.A3'
+                 )
+ex$merged.res.3.m.renamed<-Idents(ex)
+ex$merged.res.3.m.renamed<-factor(ex$merged.res.3.m.renamed,levels=levels(ex$merged.res.3.m.renamed)[c(1,7,9,10,13,16,17,2:6,8,11,12,14,15)])
+Idents(ex)<-'merged.res.3.m.renamed'
+ex$merged.res.3.m.renamed0<-ex$merged.res.3.m.renamed
+levels(ex$merged.res.3.m.renamed0)<-1:17
+```
+find better colormap, and plot high res clustering
+```{r,,fig.width=4,fig.height=3}
+library(RColorBrewer)
+library(ggplot2)
+getPalette = colorRampPalette(brewer.pal(9, "YlOrRd"))
+pal1<-getPalette(12)
+getPalette = colorRampPalette(brewer.pal(9, "GnBu"))
+pal2<-getPalette(15)
+RLpalchicken<-c(pal1[(12-7+1):12],pal2[(15-10+1):15])
+
+
+
+DimPlot(object = ex, reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'merged.res.3.m.renamed0')+ 
+  scale_color_manual(values=RLpalchicken)
+
+
+```
+```{r}
+
+DimPlot(object = ex, reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'merged.res.3.m.renamed0')+ 
+  scale_color_manual(values=RLpalchicken)
+
+
+```
+
+
+
+now look at inhibitory cell types.
+
+
+```{r,fig.width=4,fig.height=3}
+Idents(inh)<-'merged.res.2'
+inh<-RenameIdents(inh,'inh_1'="Inh1.1","inh_0"="Inh1.2","inh_2"="Inh1.3","inh_3"="Inh2","inh_7"="Inh3")
+inh$merged.res.2.renamed<-Idents(inh)
+DimPlot(inh,group.by = 'merged.res.2.renamed',pt.size=1.5,label=F,repel=T)
+```
+set better colormap
+```{r,fig.height=3, fig.width=4}
+
+getPalette = colorRampPalette(brewer.pal(9, "BuGn"))
+pal1<-getPalette(7)
+getPalette = colorRampPalette(brewer.pal(9, "Greys"))
+pal2<-getPalette(1)
+#VZpalchicken<-c('#800080','#CD3BD1','#D396D6',rev(pal1[c((7-4+1),7)]))
+VZpalchicken<-c('#800080','#CD3BD1','#D396D6',rev(pal1[c((7-4+1))]),'dimgrey')
+
+DimPlot(object = inh, reduction = 'tsne', label=F,repel = F,pt.size = 1.5)+ scale_color_manual(values=VZpalchicken)
+```
+
+plot marker genes for excitatory cells
+```{r,fig.width=5,fig.height=4}
+FeaturePlot(ex,c("SNAP25","SLC17A6","GAD1","SLC6A5"),pt.size=1)
+```
+plot marker genes for excitatory cells
+```{r,fig.width=5,fig.height=4}
+FeaturePlot(inh,c("SNAP25","SLC17A6","GAD1","SLC6A5"),pt.size=1,reduction = 'tsne')
+```
+
+
+
+
+make dotplots of marker genes
+
+
+```{r}
+Idents(ex)<-'merged.res.3.m.renamed'
+Idents(inh)<-'merged.res.2.renamed'
+
+library(dplyr)
+Emarkers<-FindAllMarkers(ex,logfc.threshold = 1,min.diff.pct = 0.35,min.pct = 0.4)
+
+Imarkers<-FindAllMarkers(inh,logfc.threshold = 1,min.diff.pct = 0.3,min.pct = 0.4)
+
+```
+```{r,fig.width=7,fig.height=6}
+Emarkers %>% group_by(cluster) %>% filter(substr(gene,1,6)!='ENSGAL')  %>% 
+  top_n(n = 1, wt = avg_logFC)->Emarkergenes
+Imarkers %>% group_by(cluster)%>% filter(substr(gene,1,6)!='ENSGAL') %>% top_n(n = 1, wt = avg_logFC)->Imarkergenes
+
+
+
+ex$mergeclusters<-ex$merged.res.3.m.renamed
+inh$mergeclusters<-inh$merged.res.2.renamed
+merged<-merge(ex,inh)
+merged$mergeclusters<-factor(merged$mergeclusters,levels=c(levels(ex$merged.res.3.m.renamed),levels(inh$merged.res.2.renamed)))
+Idents(merged)<-'mergeclusters'
+DotPlot(merged,features=c("SNAP25","RBFOX3","SLC17A6","GAD1",unique(c(Emarkergenes$gene,Imarkergenes$gene))))+RotatedAxis()+coord_flip()
+```
+```{r,fig.width=8,fig.height=6}
+Emarkers %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC)->Emarkergenes
+Imarkers %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC)->Imarkergenes
+
+
+
+ex$mergeclusters<-ex$merged.res.3.m.renamed
+inh$mergeclusters<-inh$merged.res.2.renamed
+merged<-merge(ex,inh)
+merged$mergeclusters<-factor(merged$mergeclusters,levels=c(levels(ex$merged.res.3.m.renamed),levels(inh$merged.res.2.renamed)))
+Idents(merged)<-'mergeclusters'
+DotPlot(merged,features=c("SNAP25","RBFOX3","SLC17A6","GAD1",unique(c(Emarkergenes$gene,Imarkergenes$gene))))+RotatedAxis()+coord_flip()
+```
+make a heatmap too.
+
+```{r,fig.width=15,fig.height=20}
+library(viridis)
+#Emarkers<-FindAllMarkers(ex,logfc.threshold = 1,min.diff.pct = 0.35,min.pct = 0.4)
+Emarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)->Emarkergenes
+
+#Imarkers<-FindAllMarkers(inh,logfc.threshold = 1,min.diff.pct = 0.3,min.pct = 0.4)
+Imarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)->Imarkergenes
+
+
+DoHeatmap(merged,features=
+            c("SNAP25","RBFOX3","SLC17A6","GAD1","ACAN",unique(c(Emarkergenes$gene,Imarkergenes$gene))),
+          slot = 'data',disp.min = 0,
+          group.colors = c(RLpalchicken,VZpalchicken),group.bar.height = 0.01)+
+   scale_fill_viridis()
+
+```
+
+```{r,fig.width=15,fig.height=20}
+library(viridis)
+#Emarkers<-FindAllMarkers(ex,logfc.threshold = 1,min.diff.pct = 0.35,min.pct = 0.4)
+Emarkers %>% group_by(cluster) %>% filter(substr(gene,1,6)!='ENSGAL') %>% top_n(n = 10, wt = avg_logFC)->Emarkergenes
+
+#Imarkers<-FindAllMarkers(inh,logfc.threshold = 1,min.diff.pct = 0.3,min.pct = 0.4)
+Imarkers %>% group_by(cluster)%>% filter(substr(gene,1,6)!='ENSGAL')  %>% top_n(n = 10, wt = avg_logFC)->Imarkergenes
+
+
+DoHeatmap(merged,features=
+            c("SNAP25","RBFOX3","SLC17A6","GAD1","ACAN",unique(c(Emarkergenes$gene,Imarkergenes$gene))),
+          slot = 'data',disp.min = 0,
+          group.colors = c(RLpalchicken,VZpalchicken),group.bar.height = 0.01)+
+   scale_fill_viridis()
+
+```
+
+```{r}
+Emarkers %>% group_by(cluster)%>% filter(substr(gene,1,6)!='ENSGAL') %>% top_n(n = 5, wt = avg_logFC)
+```
+```{r,fig.width=12,fig.height=6}
+VlnPlot(merged,c("nFeature_RNA",'nCount_RNA'),pt.size = 0,ncol = 1,cols=c(RLpalchicken,VZpalchicken))
+```
+```{r,fig.width=5,fig.height=5}
+ex$class<-ex$merged.res.3.m.renamed0
+levels(ex$class)<-c(rep('Class A',7),rep('Class B',10))
+VlnPlot(ex,c("nFeature_RNA","nCount_RNA"),group.by = 'class',cols=c('tomato','deepskyblue4'),ncol=1,pt.size = 0)
+```
+
+
+
+```{r,fig.width=10,fig.height=8}
+library(wesanderson)
+p1<- DimPlot(object = inh, reduction = 'tsne', label=F,repel = F,pt.size = 1.5)+ scale_color_manual(values=VZpalchicken)
+p2<- DimPlot(object = inh, reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'donor')+ scale_color_manual(values = wes_palette("FantasticFox1", n = 3))
+
+p3<- DimPlot(object = ex, reduction = 'tsne', label=F,repel = F,pt.size = 1.5)+ scale_color_manual(values=RLpalchicken)
+p4<- DimPlot(object = ex,reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'donor')+
+  scale_color_manual(values = wes_palette("FantasticFox1", n = 3))
+
+(p3 | p4)/(p1 | p2)
+```
+
+
+make a dendrogram and correlation matrix for inhibitory cell types
+
+```{r}
+Idents(inh)<-'merged.res.2.renamed'
+mouse2<-inh
+#DEGs<-FindAllMarkers(inh,test.use = 'wilcox')
+#save(DEGs,file='inh_DEGS.RData')
+load('data/inh_DEGS.RData')
+mouseDEGs.filtered<-DEGs[DEGs$p_val_adj<0.01 & DEGs$avg_logFC>log(2),]
+mouse2@assays$RNA@var.features<-unique(mouseDEGs.filtered$gene)
+
+interestinggenes<-unique(mouseDEGs.filtered$gene)
+mouseaverage<-AverageExpression(mouse2,features=interestinggenes,verbose=F)
+
+mouseaverage<-mouseaverage[[1]]
+
+mouse.norm<-mouseaverage/rowMeans(mouseaverage)
+```
+
+
+```{r}
+library(pvclust)
+result <- pvclust(as.matrix(mouse.norm), nboot=10000,method.hclust = "average",method.dist = function(z){as.dist(1-cor(z,use="pa",method="spearman"))})
+```
+
+```{r}
+dend <- (as.dendrogram(result))
+dend %>% pvclust_show_signif_gradient(result,signif_type = 'au',
+                                      signif_col_fun = colorRampPalette(c('white','black'))) %>%
+  set("nodes_pch", 19) %>%
+  set("branches_lwd", 2) %>%
+   plot(horiz=F)
+result %>% text
+#CN=as.factor(substring(levels(inh$merged.res.2.renamed),1,3))
+#levels(CN)<-c(2,3,1)
+#CN<-factor(CN,levels = c(1,2,3))
+#bars=data.frame(CN=subareapal[1:6]);
+
+#colored_bars(colors = bars, dend = dend, sort_by_labels_order = TRUE,horiz=F)
+
+
+```
+
+
+
+
+
+```{r,fig.width=6,fig.height=4.75}
+
+library(Hmisc)
+res<-rcorr(as.matrix(cbind(mouse.norm)),type="spearman")
+x<-res[[1]]
+
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+
+col1=colorRamp2(c(-1, 0, 1), c("navy", "white", "firebrick3"),space="sRGB")
+
+dend1=dend
+dend2=dend
+
+mat<-x
+#colnames(mat)<-colnames(mouseaverage)
+#rownames(mat)<-colnames(chickenaverage)
+
+
+#column annotation
+ha_bottom<- HeatmapAnnotation(
+  cl=colnames(mat),
+  col=list(cl=setNames(c(VZpalchicken),colnames(mat))),
+
+    simple_anno_size=unit(2,"mm")
+)
+
+#row annotation
+ha_right<- rowAnnotation(
+  cl=rownames(mat),
+  col=list(cl=setNames(VZpalchicken,rownames(mat))),
+  simple_anno_size=unit(2,"mm")
+)
+
+Heatmap(mat,
+        name='correlation',
+        col=col1,
+        bottom_annotation = ha_bottom,
+        right_annotation = ha_right,
+#        clustering_distance_rows  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        clustering_distance_columns  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        row_dend_reorder =FALSE, column_dend_reorder = F,
+        cluster_rows = (dend1),cluster_columns = (dend2),
+        row_dend_width = unit(25, "mm"),
+        column_dend_height = unit(25,"mm"),
+        row_split=3,column_split = 3,
+        border=T)#,
+#            if(sig[i,j]>0)
+#            grid.points(x, y,pch=16,size = unit(2, "mm"))
+#          }
+#)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

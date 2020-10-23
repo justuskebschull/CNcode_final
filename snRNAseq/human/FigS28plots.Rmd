@@ -1,0 +1,154 @@
+---
+title: "FigS28 plots"
+output: 
+  pdf_document: 
+    keep_tex: yes
+keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(patchwork)
+library(Hmisc)
+library(heatmap3)
+library(qlcMatrix)
+```
+
+```{r}
+load('~/postdoc2/DCN_sequencing/human/plateseq/Novaseq49/dataforplotting.RData')
+```
+
+
+```{r}
+Idents(ex)<-'merged.res.2.renamed'
+Idents(inh)<-'merged.res.2.renamed'
+
+library(dplyr)
+Emarkers<-FindAllMarkers(ex,logfc.threshold = 1,min.diff.pct = 0.3,min.pct = 0.4)
+
+Imarkers<-FindAllMarkers(inh,logfc.threshold = 1,min.diff.pct = 0.3,min.pct = 0.4)
+
+```
+```{r}
+Imarkers %>% group_by(cluster)%>% top_n(n = 5, wt = avg_logFC)
+```
+```{r}
+Emarkers %>% group_by(cluster)%>% top_n(n = 5, wt = avg_logFC)
+```
+```{r}
+EmarkersMedA1<-FindMarkers(ex,logfc.threshold = 1,ident.1 = 'Med.A1',only.pos = T)
+```
+
+
+```{r,fig.width=7,fig.height=6}
+Emarkers %>% group_by(cluster) %>% 
+  top_n(n = 1, wt = avg_logFC)->Emarkergenes
+Imarkers %>% group_by(cluster)%>% top_n(n = 1, wt = avg_logFC)->Imarkergenes
+
+#Emarkergenes$gene<-c("LMX1A","NXPH1","WHRN","CALB1","PROX1","TYR","LTBP2")
+Imarkergenes$gene<-c("SLC24A4","SLC6A5","RSPO3","NDNF","HTR2C")
+
+
+ex$mergeclusters<-ex$merged.res.2.renamed
+inh$mergeclusters<-inh$merged.res.2.renamed
+merged<-merge(ex,inh)
+merged$mergeclusters<-factor(merged$mergeclusters,levels=c(levels(ex$merged.res.2.renamed),levels(inh$merged.res.2.renamed)))
+Idents(merged)<-'mergeclusters'
+DotPlot(merged,features=c("SNAP25","RBFOX3","SLC17A6","GAD1","CECR2",Emarkergenes$gene[2:11],Imarkergenes$gene),assay = 'RNA') + RotatedAxis()+coord_flip()
+```
+
+
+
+make a heatmap too.
+
+```{r,fig.width=15,fig.height=10}
+library(viridis)
+#Emarkers<-FindAllMarkers(ex,logfc.threshold = 1,min.diff.pct = 0.35,min.pct = 0.4)
+Emarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)->Emarkergenes
+
+#Imarkers<-FindAllMarkers(inh,logfc.threshold = 1,min.diff.pct = 0.3,min.pct = 0.4)
+Imarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)->Imarkergenes
+
+
+DoHeatmap(merged,features=
+            c("SNAP25","RBFOX3","SLC17A6","GAD1",unique(c(Emarkergenes$gene,Imarkergenes$gene))),
+          slot = 'data',disp.min = 0,
+          group.colors = c(RLpalhuman,VZpalhuman),group.bar.height = 0.01)+
+   scale_fill_viridis()
+
+```
+```{r,fig.width=15,fig.height=10}
+DoHeatmap(ex,features=
+            c("SNAP25","RBFOX3","SLC17A6","GAD1",unique(c(Emarkergenes$gene))),
+          slot = 'data',disp.min = 0,
+          group.colors = c(RLpalhuman,VZpalhuman),group.bar.height = 0.01)+
+   scale_fill_viridis()
+```
+
+
+
+```{r,fig.width=15,fig.height=5}
+DoHeatmap(inh,features=
+            c("SNAP25","RBFOX3","SLC17A6","GAD1",unique(c(Imarkergenes$gene))),
+          slot = 'data',disp.min = 0,
+          group.colors = c(VZpalhuman),group.bar.height = 0.01)+
+   scale_fill_viridis()
+
+```
+
+
+
+
+```{r,fig.width=8,fig.height=6}
+VlnPlot(merged,c("nFeature_RNA",'nCount_RNA'),pt.size = 0,ncol = 1,cols=c(RLpalhuman,VZpalhuman))
+```
+
+cell type abundances
+
+```{r}
+humantable_inh<-as.data.frame(table(inh$merged.res.2.renamed))
+humantable_inh<-humantable_inh[c(1,3:6),]
+library(ggplot2)
+# Barplot
+bp<- ggplot(humantable_inh, aes(x="", y=Freq, fill=Var1))+
+geom_bar(width = 1, stat = "identity")
+pie <- bp + coord_polar("y", start=0)+
+  scale_fill_manual(values=c(VZpalhuman))
+pie
+```
+```{r}
+humantable_ex<-as.data.frame(table(ex$merged.res.2.renamed))
+library(ggplot2)
+# Barplot
+bp<- ggplot(humantable_ex, aes(x="", y=Freq, fill=Var1))+
+geom_bar(width = 1, stat = "identity")
+pie <- bp + coord_polar("y", start=0)+
+  scale_fill_manual(values=c(RLpalhuman))
+pie
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,189 @@
+---
+title: "FigS4 class level DEGs"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    keep_tex: yes
+keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(patchwork)
+library(Hmisc)
+library(heatmap3)
+library(qlcMatrix)
+```
+
+get data
+```{r}
+setwd('~/postdoc2/Gedankenpapers/CNevomanuscript/code/snRNAseq/mouse/FigS4/') #change to your file path
+load('../data/dataforplotting.RData') # point to where ever you uncompressed this file
+```
+
+find markers
+```{r}
+Idents(RL)<-'classes'
+#classmarkers<-FindMarkers(RL,ident.1='ClassA',ident.2 = 'ClassB',test.use = 'wilcox',logfc.threshold = 0)
+#save(classmarkers,file='DEGs_classes.RData')
+load('../data/DEGs_classes.RData')
+```
+```{r,fig.height=9,fig.width=9}
+# convert from ln to log2 fold change.
+classmarkers$avg_log2FC<-classmarkers$avg_logFC*log2(exp(1))
+library(EnhancedVolcano)
+EnhancedVolcano(classmarkers,
+                lab=rownames(classmarkers),
+                x='avg_log2FC',
+                y='p_val_adj',
+#                xlim=c(-2,3.5),
+                FCcutoff=1,
+                pCutoff = 0.05,
+                transcriptPointSize=2,
+                transcriptLabSize = 5,
+                gridlines.major = F,
+                gridlines.minor = F)
+```
+
+
+```{r}
+#write.csv(classmarkers[classmarkers$p_val_adj<0.05 & classmarkers$avg_log2FC>1,],file = 'Amarkers.csv')
+#write.csv(classmarkers[classmarkers$p_val_adj<0.05 & classmarkers$avg_log2FC< -1,],file = 'Bmarkers.csv')
+```
+
+look at specific gene sets.
+
+
+serotonin receptors GO:0099589
+gaba receptors: GO:0030594
+glutamate receptor GO:0008066
+adrenergic receptor GO:0004935
+dopamine receptor GO:0004952
+histamine receptor GO:0004969
+
+ion channels GO:0005216
+
+neuropeptide signalling activity: GO:0007218
+
+DNA-binding transcription factor activity: GO:0003700
+
+cell adhesion: GO:0007155
+
+```{r}
+ser=read.csv('go0099589.csv')
+gaba=read.csv('go0030594.csv')
+glu=read.csv('go0008066.csv')
+ad=read.csv('go0004935.csv')
+dop=read.csv('go0004952.csv')
+his=read.csv('go0004969.csv')
+ion=read.csv('go0005216.csv')
+k=read.csv('go0005267.csv')
+transmitterreceptors=read.csv('go0030594.csv')
+TFs=read.csv('go0003700.csv')
+adhesion=read.csv('go0007155.csv')
+neuropeptide=read.csv('go0007218.csv')
+
+```
+
+```{r,fig.height=9,fig.width=9}
+kmarkers<-classmarkers[rownames(classmarkers) %in% k$Gene.name & 
+                         classmarkers$p_val_adj<0.05 & 
+                         abs(classmarkers$avg_log2FC)>1,]
+EnhancedVolcano(classmarkers,
+                selectLab=rownames(kmarkers),
+                lab=rownames(classmarkers),
+                drawConnectors = T,
+                pCutoff = 0.05,
+                x='avg_log2FC',
+                y='p_val_adj',
+#                xlim=c(-2,3.5),
+                FCcutoff=1,
+                transcriptPointSize=2,
+                transcriptLabSize = 5,
+                gridlines.major = F,
+                gridlines.minor = F)
+```
+
+```{r,fig.height=9,fig.width=9}
+ionmarkers<-classmarkers[rownames(classmarkers) %in% ion$Gene.name & 
+                         classmarkers$p_val_adj<0.05 & 
+                         abs(classmarkers$avg_log2FC)>1,]
+EnhancedVolcano(classmarkers,
+                selectLab=rownames(ionmarkers),
+                lab=rownames(classmarkers),
+                drawConnectors = T,
+                pCutoff = 0.05,
+                x='avg_log2FC',
+                y='p_val_adj',
+#                xlim=c(-2,3.5),
+                FCcutoff=1,
+                transcriptPointSize=2,
+                transcriptLabSize = 5,
+                gridlines.major = F,
+                gridlines.minor = F)
+```
+
+
+```{r,fig.height=9,fig.width=9}
+receptormarkers<-classmarkers[rownames(classmarkers) %in% transmitterreceptors$Gene.name & 
+                         classmarkers$p_val_adj<0.05 & 
+                         abs(classmarkers$avg_log2FC)>1,]
+EnhancedVolcano(classmarkers,
+                selectLab=rownames(receptormarkers),
+                lab=rownames(classmarkers),
+                drawConnectors = T,
+                pCutoff = 0.05,
+                x='avg_log2FC',
+                y='p_val_adj',
+#                xlim=c(-2,3.5),
+                FCcutoff=1,
+                transcriptPointSize=2,
+                transcriptLabSize = 5,
+                gridlines.major = F,
+                gridlines.minor = F)
+```
+
+
+
+
+```{r,fig.width=10,fig.height=5}
+Idents(RL)<-'final.clusters2'
+receptormarkers<-classmarkers[rownames(classmarkers) %in% transmitterreceptors$Gene.name & 
+                         classmarkers$p_val_adj<0.05 & 
+                         abs(classmarkers$avg_log2FC)>1,]
+DotPlot(RL,features = rownames(ionmarkers[order(-ionmarkers$avg_logFC),]))+RotatedAxis()
+```
+```{r,fig.width=10,fig.height=5}
+Idents(RL)<-'final.clusters2'
+TFmarkers<-classmarkers[rownames(classmarkers) %in% TFs$Gene.name & 
+                         classmarkers$p_val_adj<0.05 & 
+                         abs(classmarkers$avg_log2FC)>1,]
+DotPlot(RL,features = rownames(TFmarkers[order(-TFmarkers$avg_logFC),]))+RotatedAxis()
+```
+
+
+```{r,fig.width=10,fig.height=5}
+Idents(RL)<-'final.clusters2'
+peptidemarkers<-classmarkers[rownames(classmarkers) %in% neuropeptide$Gene.name & 
+                         classmarkers$p_val_adj<0.05 & 
+                         abs(classmarkers$avg_log2FC)>1,]
+DotPlot(RL,features = rownames(peptidemarkers[order(-peptidemarkers$avg_logFC),]))+RotatedAxis()
+```
+
+
+```{r,fig.width=15,fig.height=5}
+Idents(RL)<-'final.clusters2'
+adhesionmarkers<-classmarkers[rownames(classmarkers) %in% adhesion$Gene.name & 
+                         classmarkers$p_val_adj<0.05 & 
+                         abs(classmarkers$avg_log2FC)>1,]
+DotPlot(RL,features = rownames(adhesionmarkers[order(-adhesionmarkers$avg_logFC),]))+RotatedAxis()
+```
+

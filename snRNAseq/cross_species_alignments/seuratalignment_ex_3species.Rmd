@@ -1,0 +1,333 @@
+---
+title: "Seurat alignment of excitatory mouse, human, and chicken cell types."
+output: 
+  pdf_document: 
+    keep_tex: yes
+keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Post novaseq49
+
+```{r}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(qlcMatrix)
+library(Hmisc)
+library(ComplexHeatmap)
+library(circlize)
+```
+
+load mouse data
+
+
+load mouse data, keeping all clusters 
+```{r}
+load(file = '~/postdoc2/DCN_sequencing/scRNAseq/plateseq/Novaseq31/dataforplotting.RData')
+Idents(RL)<-'classes'
+RL<-RenameIdents(RL,'ClassA'='Class-A','ClassB'='Class-B')
+RL$classes<-Idents(RL)
+RL$class<-paste0('M_',RL$classes)
+
+mouse<-RL
+
+rm(RL,VZ,merged)
+mouse.data<-mouse@assays$RNA@counts
+```
+
+revert gene names to  ENSG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/scRNAseq/plateseq/EnseblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-mouse.data[rownames(mouse.data) %in% conversiontable.notrepeated[,2],]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+
+
+counts_nottranslated<-mouse.data[!rownames(mouse.data) %in% conversiontable.notrepeated[,2],]
+
+mouse.data2<-rbind(counts_translated,counts_nottranslated)
+
+```
+
+
+
+
+
+
+load chickendata 
+```{r}
+load('~/postdoc2/DCN_sequencing/chicken/plateseq/novaseq44/ex.RData')
+#define classes:
+Idents(ex)<-'merged.res.3.m.renamed'
+ex<-RenameIdents(ex,'Med.A1'="Class-A","MedL.A1"="Class-A","IntP.A1"="Class-A", "IntP.A2"="Class-A", "IntX.A1"="Class-A", "IntX.A2"="Class-A", "IntX.A3"="Class-A", "Med.B1"="Class-B",  "Med.B2"="Class-B",  "Med.B3"="Class-B",  "Med.B4"="Class-B","Med.B5"="Class-B",  "MedL.B1"="Class-B", "IntP.B1"="Class-B", "IntP.B2"="Class-B", "IntX.B1"="Class-B", "IntX.B2"="Class-B")
+ex$classes<-Idents(ex)
+ex$class<-paste0('C_',ex$classes)
+
+all<-ex
+```
+
+
+```{r}
+chicken.data<-all@assays$RNA@counts
+chicken<-all
+rm(ex_clean)
+```
+
+
+revert gene names to  ENSG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/chicken/plateseq/EnsembleID99_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-chicken.data[rownames(chicken.data) %in% conversiontable.notrepeated[,2],]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+
+
+counts_nottranslated<-chicken.data[!rownames(chicken.data) %in% conversiontable.notrepeated[,2],]
+
+chicken.data2<-rbind(counts_translated,counts_nottranslated)
+
+```
+
+load human data
+
+```{r}
+load('~/postdoc2/DCN_sequencing/human/plateseq/Novaseq49/dataforplotting.RData')
+Idents(ex)<-'merged.res.2.renamed'
+ex<-RenameIdents(ex,"Med.A1" = 'Class-A', "MedL.A1" = 'Class-A', "MedL.A2" = 'Class-A', "IntA.A1" = 'Class-A', "IntP.A1" = 'Class-A', "IntP.A2" = 'Class-A', "Med.B1" = 'Class-B',  "IntA.B1" = 'Class-B', "IntP.B1" = 'Class-B', "IntP.B2" = 'Class-B', "Lat.B1" = 'Class-B')
+ex$classes<-Idents(ex)
+ex$class<-paste0('H_',ex$classes)
+
+all<-ex
+rm(ex,inh)
+
+human.data<-all@assays$RNA@counts
+human<-all
+```
+
+
+revert gene names to  ENSG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/human/EnsembleID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-human.data[rownames(human.data) %in% conversiontable.notrepeated[,2],]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+
+
+counts_nottranslated<-human.data[!rownames(human.data) %in% conversiontable.notrepeated[,2],]
+
+human.data2<-rbind(counts_translated,counts_nottranslated)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+read in ortholog relationships obtained from ensemble biomart
+
+```{r}
+orth.table<-read.csv(file='~/postdoc2/DCN_sequencing/chicken/plateseq/chicken_human_mouse_orthologs.txt',header=T)
+#throw out anything that isnt onetoone
+orth.table<-orth.table[orth.table[,"Human.homology.type"]=="ortholog_one2one" & orth.table[,"Mouse.homology.type"]=="ortholog_one2one",]
+#drop extra columns
+orth.table.clean<-unique(orth.table[,c("Gene.stable.ID",'Human.gene.stable.ID','Human.gene.name','Mouse.gene.stable.ID','Mouse.gene.name')])
+```
+
+
+throw out what isn't in a 1:1 ortholog
+```{r}
+chicken.data.filtered<-chicken.data2[rownames(chicken.data2) %in% as.character(orth.table.clean$Gene.stable.ID),]
+rownames(chicken.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(chicken.data.filtered),orth.table.clean$Gene.stable.ID)])
+
+human.data.filtered<-human.data2[rownames(human.data2) %in% as.character(orth.table.clean$Human.gene.stable.ID),]
+rownames(human.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(human.data.filtered),orth.table.clean$Human.gene.stable.ID)])
+
+mouse.data.filtered<-mouse.data2[rownames(mouse.data2) %in% as.character(orth.table.clean$Mouse.gene.stable.ID),]
+rownames(mouse.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(mouse.data.filtered),orth.table.clean$Mouse.gene.stable.ID)])
+
+```
+
+why are there still different numbers of genes?
+```{r}
+chicken.data.filtered2<-chicken.data.filtered[rownames(chicken.data.filtered) %in% rownames(human.data.filtered) & rownames(chicken.data.filtered) %in% rownames(mouse.data.filtered),]
+human.data.filtered2<-human.data.filtered[rownames(human.data.filtered) %in% rownames(chicken.data.filtered2) & rownames(human.data.filtered) %in% rownames(mouse.data.filtered),]
+
+mouse.data.filtered2<-mouse.data.filtered[rownames(mouse.data.filtered) %in% rownames(chicken.data.filtered2) & rownames(mouse.data.filtered) %in% rownames(human.data.filtered2),]
+```
+
+now convert them all back to human names for simplicity.
+
+replace known ENSMUSG genes with their names, keep the remainder
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/scRNAseq/plateseq/EnseblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-chicken.data.filtered2[rownames(chicken.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-chicken.data.filtered2[!rownames(chicken.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+chicken.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+
+
+counts_translated<-human.data.filtered2[rownames(human.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-human.data.filtered2[!rownames(human.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+human.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+
+counts_translated<-mouse.data.filtered2[rownames(mouse.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-mouse.data.filtered2[!rownames(mouse.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+mouse.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+
+
+
+```
+
+
+
+
+
+
+Set up seurat objects. 
+
+```{r}
+human2<-CreateSeuratObject(human.data.filtered3)
+human2@meta.data<-human@meta.data
+human2$species<-'human'
+human2$clusters<-paste0('H_',human2$merged.res.2.renamed)
+human2$clusters<-factor(human2$clusters,levels=paste0('H_',levels(human2$merged.res.2.renamed)))
+
+
+chicken2<-CreateSeuratObject(chicken.data.filtered3)
+chicken2@meta.data<-chicken@meta.data
+chicken2$species<-'chicken'
+chicken2$clusters<-paste0('C_',chicken2$merged.res.3.m.renamed)
+chicken2$clusters<-factor(chicken2$clusters,levels=paste0('C_',levels(chicken2$merged.res.3.m.renamed)))
+
+
+mouse2<-CreateSeuratObject(mouse.data.filtered3)
+mouse2@meta.data<-mouse@meta.data
+mouse2$species<-'mouse'
+mouse2$clusters<-paste0('M_',mouse2$final.clusters2)
+mouse2$clusters<-factor(mouse2$clusters,levels=paste0('M_',levels(mouse2$final.clusters2)))
+
+dcn<-merge(mouse2,chicken2)
+dcn<-merge(dcn,human2)
+
+#downsample to roughly equal cluster sizes
+#Idents(dcn)<-'clusters'
+#dcn<-subset(dcn, downsample = 50)
+
+
+load('~/postdoc2/DCN_sequencing/human/plateseq/Novaseq49/3species_downsampled50.RData')
+
+
+dcn.list<-SplitObject(dcn,split.by = 'species')
+
+
+for (i in 1:length(x = dcn.list)) {
+    dcn.list[[i]] <- NormalizeData(object = dcn.list[[i]], verbose = FALSE,scale.factor = 1e6)
+    dcn.list[[i]] <- FindVariableFeatures(object = dcn.list[[i]], 
+        selection.method = "vst", nfeatures = 2000, verbose = FALSE)
+}
+library(future)
+plan("multiprocess", workers = 4)
+plan("multiprocess",workers=4)
+options(future.globals.maxSize=2971520000)
+
+DCN.anchors <- FindIntegrationAnchors(object.list = dcn.list, dims = 1:40,anchor.features = 2000)
+```
+
+```{r}
+DCN.integrated <- IntegrateData(anchorset = DCN.anchors, dims = 1:40,features.to.integrate = rownames(dcn))
+```
+
+```{r}
+library(ggplot2)
+library(cowplot)
+DefaultAssay(object = DCN.integrated) <- "integrated"
+
+DCN.integrated <- ScaleData(object = DCN.integrated, verbose = FALSE,vars.to.regress = c())
+DCN.integrated<-RunPCA(DCN.integrated,dims=1:40)
+ElbowPlot(DCN.integrated)
+```
+
+```{r}
+useful.dims=c(1:5)
+DCN.integrated<-FindNeighbors(DCN.integrated,dims = useful.dims)
+DCN.integrated<-FindClusters(DCN.integrated,resolution = 0.2)
+DCN.integrated <- RunTSNE(object = DCN.integrated, reduction = "pca", 
+    dims = useful.dims,perplexity=50)
+
+```
+```{r,fig.width=15,fig.height=10}
+p1<-DimPlot(DCN.integrated,group.by = 'species',label = F,pt.size = 1.5,cols=c('gold','maroon','grey'))+NoLegend()
+p2<-DimPlot(DCN.integrated,group.by = 'classes',label=F,pt.size = 1.5,cols=c('#ff6347','#00688b'))+NoLegend()
+p3<-DimPlot(DCN.integrated,label=F,pt.size = 1.5)+NoLegend()
+p4<-DimPlot(DCN.integrated,group.by = 'clusters',label=T,pt.size = 1.5)+NoLegend()
+plot_grid(p1,p2,p3,p4,ncol=2)
+```
+
+
+
+
+
+
+
+
+```{r,fig.height=2.5,fig.width=10}
+t<-table(DCN.integrated$integrated_snn_res.0.2,DCN.integrated$class)
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+
+
+#column annotation
+#ha_bottom<- HeatmapAnnotation(
+#  species=colnames(mat),
+#  col=list(species=setNames(c(rep('gold',17),rep('grey50',15)),colnames(mat))),
+#  simple_anno_size=unit(2,"mm")
+#)
+
+
+Heatmap(mat,col=col1,cluster_columns = F,cluster_rows = F)
+```

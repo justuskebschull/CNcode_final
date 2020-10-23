@@ -1,0 +1,407 @@
+---
+title: "Analyse human data from raw files"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+ 
+
+ 
+ 
+```{r}
+library(Seurat)
+library(dplyr)
+library(cowplot)
+library(ggplot2)
+library(patchwork)
+```
+
+
+load data
+```{r}
+
+setwd('~/postdoc2/DCN_sequencing/human/plateseq/novaseq46/')
+
+raw_counts79e<-read.table(file="genesXcells_exons_LLL79.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts80e<-read.table(file="genesXcells_exons_LLL80.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts81e<-read.table(file="genesXcells_exons_LLL81.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts82e<-read.table(file="genesXcells_exons_LLL82.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts83e<-read.table(file="genesXcells_exons_LLL83.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts84e<-read.table(file="genesXcells_exons_LLL84.tab",sep="\t",row.names=1,header=TRUE)
+
+raw_counts79i<-read.table(file="genesXcells_introns_LLL79.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts80i<-read.table(file="genesXcells_introns_LLL80.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts81i<-read.table(file="genesXcells_introns_LLL81.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts82i<-read.table(file="genesXcells_introns_LLL82.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts83i<-read.table(file="genesXcells_introns_LLL83.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts84i<-read.table(file="genesXcells_introns_LLL84.tab",sep="\t",row.names=1,header=TRUE)
+
+
+
+raw_counts_e<-cbind(raw_counts79e,raw_counts80e,raw_counts81e,raw_counts82e,raw_counts83e,raw_counts84e)
+
+
+
+raw_counts_i<-cbind(raw_counts79i,raw_counts80i,raw_counts81i,raw_counts82i,raw_counts83i,raw_counts84i)
+
+```
+```{r}
+setwd('~/postdoc2/DCN_sequencing/human/plateseq/novaseq_humantest/')
+
+raw_counts29e<-read.table(file="genesXcells_exons_LLL29.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts30e<-read.table(file="genesXcells_exons_LLL30.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts31e<-read.table(file="genesXcells_exons_LLL31.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts33e<-read.table(file="genesXcells_exons_LLL33.tab",sep="\t",row.names=1,header=TRUE)
+
+
+
+raw_counts29i<-read.table(file="genesXcells_introns_LLL29.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts30i<-read.table(file="genesXcells_introns_LLL30.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts31i<-read.table(file="genesXcells_introns_LLL31.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts33i<-read.table(file="genesXcells_introns_LLL33.tab",sep="\t",row.names=1,header=TRUE)
+
+
+
+
+
+setwd('~/postdoc2/DCN_sequencing/human/plateseq/novaseq41/separate_exonintrons/')
+
+raw_counts46e<-read.table(file="genesXcells_exons.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts51e<-read.table(file="genesXcells_exons51.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts52e<-read.table(file="genesXcells_exons52.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts53e<-read.table(file="genesXcells_exons53.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts54e<-read.table(file="genesXcells_exons54.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts55e<-read.table(file="genesXcells_exons55.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts56e<-read.table(file="genesXcells_exons56.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts57e<-read.table(file="genesXcells_exons57.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts58e<-read.table(file="genesXcells_exons58.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts59e<-read.table(file="genesXcells_exons59.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts60e<-read.table(file="genesXcells_exons60.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts61e<-read.table(file="genesXcells_exons61.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts62e<-read.table(file="genesXcells_exons62.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts63e<-read.table(file="genesXcells_exons63.tab",sep="\t",row.names=1,header=TRUE)
+
+
+
+raw_counts46i<-read.table(file="genesXcells_introns.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts51i<-read.table(file="genesXcells_introns51.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts52i<-read.table(file="genesXcells_introns52.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts53i<-read.table(file="genesXcells_introns53.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts54i<-read.table(file="genesXcells_introns54.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts55i<-read.table(file="genesXcells_introns55.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts56i<-read.table(file="genesXcells_introns56.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts57i<-read.table(file="genesXcells_introns57.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts58i<-read.table(file="genesXcells_introns58.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts59i<-read.table(file="genesXcells_introns59.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts60i<-read.table(file="genesXcells_introns60.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts61i<-read.table(file="genesXcells_introns61.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts62i<-read.table(file="genesXcells_introns62.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts63i<-read.table(file="genesXcells_introns63.tab",sep="\t",row.names=1,header=TRUE)
+
+raw_counts_e<-cbind(raw_counts_e,raw_counts63e,raw_counts62e,raw_counts61e,raw_counts60e,raw_counts59e,raw_counts58e,
+                  raw_counts57e,raw_counts56e,raw_counts55e,raw_counts54e,raw_counts53e,raw_counts52e,
+                  raw_counts51e,raw_counts46e,raw_counts33e,raw_counts31e,raw_counts30e,raw_counts29e)
+
+
+
+raw_counts_i<-cbind(raw_counts_i,raw_counts63i,raw_counts62i,raw_counts61i,raw_counts60i,raw_counts59i,raw_counts58i,
+                  raw_counts57i,raw_counts56i,raw_counts55i,raw_counts54i,raw_counts53i,raw_counts52i,
+                  raw_counts51i,raw_counts46i,raw_counts33i,raw_counts31i,raw_counts30i,raw_counts29i)
+```
+
+
+
+```{r}
+# create a new variable from the rownames
+
+
+# add rownames as a column in each data.frame and bind rows
+counts<-bind_rows(raw_counts_e %>% add_rownames(), 
+          raw_counts_i %>% add_rownames()) %>% 
+    # evaluate following calls for each value in the rowname column
+    group_by(rowname) %>% 
+    # add all non-grouping variables
+    summarise_all(sum)
+rm(list=setdiff(ls(), "counts"))
+
+
+counts<-as.data.frame(counts)
+rownames(counts)<-counts[,'rowname']
+badrows=grep("__",rownames(counts),value=T)
+counts<-counts[!rownames(counts) %in% badrows,2:dim(counts)[2]]
+
+
+```
+
+
+
+
+replace known ENSG genes with their names, keep the remainder
+```{r}
+#load conversion table
+conversiontable=read.csv("~/postdoc2/DCN_sequencing/human/EnsemblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-counts[rownames(counts) %in% rownames(conversiontable.notrepeated),]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+
+
+counts_nottranslated<-counts[!rownames(counts) %in% rownames(conversiontable.notrepeated),]
+
+counts2<-rbind(counts_translated,counts_nottranslated)
+rm(list=setdiff(ls(), "counts2"))
+
+```
+
+
+
+```{r}
+
+#N46<- CreateSeuratObject(counts2, min.cells = 0, project = "DCN_plateseq")
+```
+
+```{r}
+rm(list = ls())
+load('~/postdoc2/DCN_sequencing/human/plateseq/novaseq46/N46.RData')
+```
+
+
+annotate by donor: 
+B0 (H2) = white male
+B1 (H1) =18-T2789 white male
+B2=19-T0161 white male
+B3 (H3) =19-T0469 (aka 449) black female
+B4=18-T2807 white female
+B5=?
+
+```{r}
+plates=sapply(strsplit(rownames(N46@meta.data),"_"),function(x) x[1])
+B0=plates %in% c("LLL29","LLL30","LLL31","LLL33")
+B1=plates %in% c("LLL46","LLL47","LLL48","LLL49","LLL51",
+                 "LLL54","LLL55","LLL56",
+                 "LLL57","LLL58",
+                 "LLL62","LLL64",
+                 "LLL80","LLL81")
+B2=plates %in% c("LLL50","LLL52","LLL61")
+B3=plates %in% c("LLL53","LLL59","LLL60","LLL63",
+                 "LLL79","LLL83")
+B4=plates %in% c("LLL65","LLL66","LLL67")
+B5=plates %in% c("LLL82","LLL84")
+donor=as.factor(as.numeric(B0)+2*as.numeric(B1)+3*as.numeric(B2)+4*as.numeric(B3)+5*as.numeric(B4)+6*as.numeric(B5))
+levels(donor)<-c("B0","B1","B2","B3","B4","B6")
+
+N46$donor<-donor
+```
+
+annotate by sex
+
+```{r}
+sex=as.factor(donor %in% c("B3","B4"))
+levels(sex)<-c('male','female')
+```
+
+annotate by FACS round:
+```{r}
+plates=sapply(strsplit(rownames(N46@meta.data),"_"),function(x) x[1])
+R01=plates %in% c("LLL29","LLL30")
+R02=plates %in% c("LLL31","LLL32","LLL33")
+
+R1=plates %in% c("LLL46","LLL47","LLL48","LLL49","LLL51")
+R2=plates %in% c("LLL50")
+R3=plates %in% c("LLL51","LLL61","LLL53","LLL59","LLL60","LLL63")
+R4=plates %in% c("LLL54","LLL55","LLL56")
+R5=plates %in% c("LLL57","LLL58")
+R6=plates %in% c("LLL79","LLL83")
+R7=plates %in% c("LLL80","LLL81","LLL82","LLL84")
+
+FACS=as.factor(as.numeric(R01)+2*as.numeric(R02)+3*as.numeric(R1)+4*as.numeric(R2)+5*as.numeric(R3)+6*as.numeric(R4)+7*as.numeric(R5)+8*as.numeric(R6)+9*as.numeric(R7))
+N46$FACS<-FACS
+```
+
+
+
+
+annotate by DCN
+```{r}
+wells=sapply(strsplit(colnames(N46),"_"),function(x) x[2])
+columns=as.numeric(substring(wells,2))
+FNcells=(columns %in% c(1:6) & plates %in% c("LLL46","LLL47","LLL48","LLL49","LLL50","LLL51","LLL59","LLL63")) |
+  (columns %in% c(1:6) & plates %in% c("LLL46","LLL47","LLL48","LLL49","LLL50","LLL51")) |
+  plates %in% c("LLL60")
+INcells=(columns %in% c(7:12)& plates %in% c("LLL46","LLL47","LLL48","LLL49","LLL50","LLL51","LLL59","LLL63")) |
+  plates %in% c("LLL80","LLL81","LLL82","LLL84")
+
+DNdcells=(columns %in% c(13:18)& plates %in% c("LLL46","LLL47","LLL48","LLL49","LLL50","LLL51","LLL59","LLL63")) |
+  (columns %in% c(1:12) & plates %in% c("LLL52","LLL53","LLL57","LLL58","LLL61","LLL62")) 
+DNvcells=(columns %in% c(19:24)& plates %in% c("LLL46","LLL47","LLL48","LLL49","LLL50","LLL51","LLL59","LLL63")) |
+  (columns %in% c(13:24) & plates %in% c("LLL52","LLL53","LLL57","LLL58","LLL61","LLL62")) |
+  (columns %in% c(17:24) & plates %in% c("LLL55","LLL56")) 
+DNcells=plates %in% c("LLL29","LLL30","LLL31","LLL33",
+                      "LLL79","LLL83")
+
+
+DCN=as.factor(as.numeric(FNcells)+2*as.numeric(INcells)+3*as.numeric(DNdcells)+4*as.numeric(DNvcells))
+
+N46@meta.data$DCN<-DCN
+
+
+VlnPlot(object = N46, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+
+```
+
+
+
+```{r}
+N46 <- NormalizeData(object = N46, normalization.method = "LogNormalize", scale.factor = 1e6)
+N46<- subset(x = N46, subset = nFeature_RNA > 2000)
+N46 <- FindVariableFeatures(object = N46,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+N46 <- ScaleData(object = N46,vars.to.regress = c('nCount_RNA'))
+N46 <- RunPCA(object = N46,npcs = 30,verbose = FALSE)
+```
+
+```{r,fig.width=15,fig.height=5}
+VlnPlot(object = N46, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#N46 <- JackStraw(object = N46, dims=20)
+#N46<- ScoreJackStraw(N46,dims=1:20)
+#JackStrawPlot(object = N46,dims=1:20)
+```
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+ElbowPlot(object = N46)
+```
+
+
+```{r, fig.height=5, fig.width=7}
+N46<- FindNeighbors(N46,dims=1:20)
+N46 <- FindClusters(object = N46, resolution = 1)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+N46 <- RunTSNE(object = N46, dims = 1:20, perplexity=30, dim.embed = 2)
+
+p1<-DimPlot(object = N46, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(N46,group.by = 'donor')
+p3<-DimPlot(N46,group.by = 'DCN')
+p4<-DimPlot(N46,group.by = 'orig.ident')
+plot_grid(p1,p2,p3,p4,ncol=2)
+```
+
+
+
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = N46, features = c("SNAP25","SLC17A6","SLC6A5","GAD1","ETV1","SLC17A7"), reduction= "tsne")
+```
+cluster 8 as granule cells?
+
+```{r}
+VlnPlot(object = N46, feature = c("nFeature_RNA"))
+```
+```{r}
+VlnPlot(object = N46, feature = c("nCount_RNA"),pt.size = 0)
+
+```
+
+
+
+
+non-neuronal cells:
+pdgfra(OPC),slc14A1(astrocyte),Gfap(astrocyte),Opalin(oligodendrocyte),nostrin(endothelial),tyrobp(microglia),slc1a3
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = N46, features = c("OPC","SLC14A1","GFAP","OPALIN","NOSTRIN","TYROBP","SLC1A3"), reduction= "tsne")
+```
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = N46, features = c("SNAP25","MEG3","RBFOX3","SLC17A6","SLC17A7","SLC17A8","GAD1","GAD2","SLC6A5","SLC31A1","CALB1","CALB2"), reduction= "tsne")
+```
+
+
+```{r}
+VlnPlot(object = N46, feature = c("nFeature_RNA", "nCount_RNA"),pt.size = 0)
+```
+```{r,fig.width=15,fig.height=10}
+
+p1<-DimPlot(object = N46, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(N46,group.by = 'donor')
+p3<-DimPlot(N46,group.by = 'DCN')
+p4<-DimPlot(N46,group.by = 'orig.ident')
+plot_grid(p1,p2,p3,p4,ncol=2)
+```
+split off neuronal cells
+
+```{r}
+neurons<-subset(N46,idents=c(8,9,3,1,0,7))
+```
+fix misslableing of Donor B5 as B4. 
+```{r}
+#load('neurons.RData')
+levels(neurons$donor)<-c("B0","B1","B2","B3","B5","B5")
+```
+```{r,fig.width=15,fig.height=10}
+
+p1<-DimPlot(object = neurons, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(neurons,group.by = 'donor')
+p3<-DimPlot(neurons,group.by = 'DCN')
+p4<-DimPlot(neurons,group.by = 'orig.ident')
+plot_grid(p1,p2,p3,p4,ncol=2)
+```
+
+
+
+```{r}
+neurons <- FindVariableFeatures(object = neurons,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+neurons <- ScaleData(object = neurons,vars.to.regress = c('nCount_RNA','orig.ident','donor'))
+neurons <- RunPCA(object = neurons,npcs = 30,verbose = FALSE)
+```
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+ElbowPlot(object = neurons)
+```
+
+
+```{r, fig.height=5, fig.width=7}
+neurons<- FindNeighbors(neurons,dims=1:15)
+neurons <- FindClusters(object = neurons, resolution = 1)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+neurons <- RunTSNE(object = neurons, dims = 1:15, perplexity=30, dim.embed = 2)
+
+
+p1<-DimPlot(object = neurons, reduction = 'tsne', label=TRUE,pt.size = 1.5)
+p2<-DimPlot(neurons,group.by = 'donor',pt.size = 1.5)
+p3<-DimPlot(neurons,group.by = 'DCN',pt.size = 1.5)
+p4<-DimPlot(neurons,group.by = 'orig.ident',pt.size = 1.5)
+plot_grid(p1,p2,p3,p4,ncol=2)
+```
+
+meg3,slc17a6,slc6a5,gad1
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = neurons, features = c("SNAP25","SLC17A6","SLC6A5","GAD1","TBR1","TYR"), reduction= "tsne",pt.size = 1.5)
+
+```
+
+```{r,fig.width=15,fig.height=6}
+VlnPlot(object = neurons, feature = c("nFeature_RNA", "nCount_RNA"))
+```
+save out neurons
+```{r}
+#save(neurons, file='neurons.RData')
+```
+
+

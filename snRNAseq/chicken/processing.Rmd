@@ -1,0 +1,906 @@
+---
+title: "Analyse chicken data starting from raw data to clustering results."
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+NB. run in Seurat 3.1.5
+
+Load data.
+ 
+ 
+ 
+```{r}
+library(Seurat)
+library(dplyr)
+library(cowplot)
+library(patchwork)
+library(scrattch.hicat)
+```
+
+```{r}
+setwd('~/postdoc2/DCN_sequencing/chicken/plateseq/novaseq43/')
+
+raw_counts68e<-read.table(file="genesXcells_exons_LLL68.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts69e<-read.table(file="genesXcells_exons_LLL69.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts70e<-read.table(file="genesXcells_exons_LLL70.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts71e<-read.table(file="genesXcells_exons_LLL71.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts72e<-read.table(file="genesXcells_exons_LLL72.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts73e<-read.table(file="genesXcells_exons_LLL73.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts74e<-read.table(file="genesXcells_exons_LLL74.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts75e<-read.table(file="genesXcells_exons_LLL75.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts76e<-read.table(file="genesXcells_exons_LLL76.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts77e<-read.table(file="genesXcells_exons_LLL77.tab",sep="\t",row.names=1,header=TRUE)
+
+
+
+raw_counts68i<-read.table(file="genesXcells_introns_LLL68.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts69i<-read.table(file="genesXcells_introns_LLL69.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts70i<-read.table(file="genesXcells_introns_LLL70.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts71i<-read.table(file="genesXcells_introns_LLL71.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts72i<-read.table(file="genesXcells_introns_LLL72.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts73i<-read.table(file="genesXcells_introns_LLL73.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts74i<-read.table(file="genesXcells_introns_LLL74.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts75i<-read.table(file="genesXcells_introns_LLL75.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts76i<-read.table(file="genesXcells_introns_LLL76.tab",sep="\t",row.names=1,header=TRUE)
+raw_counts77i<-read.table(file="genesXcells_introns_LLL77.tab",sep="\t",row.names=1,header=TRUE)
+
+```
+
+```{r}
+setwd('~/postdoc2/DCN_sequencing/chicken/plateseq/novaseq44/')
+
+raw_counts78e<-read.table(file="genesXcells_exons_LLL78.tab",sep="\t",row.names=1,header=TRUE)
+
+raw_counts78i<-read.table(file="genesXcells_introns_LLL78.tab",sep="\t",row.names=1,header=TRUE)
+
+```
+
+
+```{r}
+
+setwd('~/postdoc2/Gedankenpapers/CNevomanuscript/code/snRNAseq/chicken/')
+raw_counts_e<-cbind(raw_counts68e,raw_counts69e,raw_counts70e,raw_counts71e,
+                    raw_counts72e,raw_counts73e,raw_counts74e,raw_counts75e,raw_counts76e,raw_counts77e,raw_counts78e)
+
+raw_counts_i<-cbind(raw_counts68i,raw_counts69i,raw_counts70i,raw_counts71i,
+                    raw_counts72i,raw_counts73i,raw_counts74i,raw_counts75i,raw_counts76i,raw_counts77i,raw_counts78i)
+
+
+# create a new variable from the rownames
+
+
+# add rownames as a column in each data.frame and bind rows
+counts<-bind_rows(raw_counts_e %>% add_rownames(), 
+          raw_counts_i %>% add_rownames()) %>% 
+    # evaluate following calls for each value in the rowname column
+    group_by(rowname) %>% 
+    # add all non-grouping variables
+    summarise_all(sum)
+
+counts<-as.data.frame(counts)
+rownames(counts)<-counts[,'rowname']
+badrows1=grep("__",rownames(counts))
+badrows2=grep("ERCC-",rownames(counts))
+counts<-counts[!rownames(counts) %in% c(rownames(counts)[badrows1],rownames(counts)[badrows2]),2:dim(counts)[2]]
+```
+
+
+
+replace known ENSGALG genes with their names, keep the remainder
+```{r}
+#load conversion table
+conversiontable=read.csv("data/EnsembleID99_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-counts[rownames(counts) %in% rownames(conversiontable.notrepeated),]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+
+
+counts_nottranslated<-counts[!rownames(counts) %in% rownames(conversiontable.notrepeated),]
+
+counts2<-rbind(counts_translated,counts_nottranslated)
+rm(list=setdiff(ls(), "counts2"))
+
+```
+
+
+
+
+```{r}
+
+N44<- CreateSeuratObject(counts2, min.cells = 0, project = "DCN_plateseq")
+#ERCC <- grep(pattern = "^ERCC", x = rownames(x = N44@assays$RNA@data), value = TRUE)
+
+#N44 <- AddMetaData(object = N44, metadata = colSums(N44@assays$RNA@data[ERCC,])/colSums(N44@assays$RNA@data), col.name = "ERCC")
+VlnPlot(N44,c("nCount_RNA","nFeature_RNA"))
+```
+
+annotate by animal: 
+
+```{r}
+plates=sapply(strsplit(rownames(N44@meta.data),"_"),function(x) x[1])
+C3=plates %in% c("LLL68","LLL69","LLL70","LLL78")
+C4=plates %in% c("LLL71","LLL72","LLL77")
+C5=plates %in% c("LLL73","LLL74","LLL75","LLL76")
+donor=as.factor(as.numeric(C3)+2*as.numeric(C4)+3*as.numeric(C5))
+levels(donor)<-c("Chicken3","Chicken4","Chicken5")
+N44$donor<-donor
+```
+
+
+annotate by FACS round:
+```{r}
+plates=sapply(strsplit(rownames(N44@meta.data),"_"),function(x) x[1])
+R1=plates %in% c("LLL68","LLL69","LLL70","LLL78")
+R2=plates %in% c("LLL71","LLL72","LLL77")
+R3=plates %in% c("LLL73","LLL74","LLL75","LLL76")
+FACS=as.factor(as.numeric(R1)+2*as.numeric(R2)+3*as.numeric(R3))
+N44$FACS<-FACS
+```
+
+
+
+
+
+```{r}
+N44 <- NormalizeData(object = N44, normalization.method = "LogNormalize", scale.factor = 1e6)
+N44<- subset(x = N44, subset = nFeature_RNA > 1000)
+N44 <- FindVariableFeatures(object = N44,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+N44 <- ScaleData(object = N44,vars.to.regress = c('nCount_RNA'))
+N44 <- RunPCA(object = N44,npcs = 30,verbose = FALSE)
+```
+
+```{r,fig.width=15,fig.height=5}
+VlnPlot(object = N44, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#N44 <- JackStraw(object = N44, dims=20)
+#N44<- ScoreJackStraw(N44,dims=1:20)
+#JackStrawPlot(object = N44,dims=1:20)
+```
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+ElbowPlot(object = N44)
+```
+
+
+```{r, fig.height=5, fig.width=7}
+N44<- FindNeighbors(N44,dims=1:20)
+N44 <- FindClusters(object = N44, resolution = 1)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+N44 <- RunTSNE(object = N44, dims = 1:20, perplexity=30, dim.embed = 2)
+
+p1<-DimPlot(object = N44, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(N44,group.by = 'donor')
+p4<-DimPlot(N44,group.by = 'orig.ident')
+plot_grid(p1,p2,p4,ncol=2)
+```
+
+
+
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = N44, features = c("SNAP25","SLC17A6","SLC6A5","GAD1","ETV1","RBFOX3"), reduction= "tsne")
+```
+
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = N44, features = c("GAD1","GAD2","PCP2","CALB1","GLUD2"), reduction= "tsne")
+```
+
+
+```{r}
+table(N44$RNA_snn_res.1)
+```
+```{r}
+VlnPlot(N44,c("nFeature_RNA","nCount_RNA"))
+```
+
+
+
+non-neuronal cells:
+pdgfra(OPC),slc14A1(astrocyte),Gfap(astrocyte),Opalin(oligodendrocyte),nostrin(endothelial),tyrobp(microglia),slc1a3
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = N44, features = c("OLIG1","OLIG2","GFAP","OPALIN","NOSTRIN","TYROBP","SLC1A3"), reduction= "tsne")
+```
+
+split off neuronal cells (2,11,13,14,12), that are not granule cells (05,0,7,17) or purkinje cells (16), crap 6
+
+```{r}
+neurons<-subset(x=N44,idents=c(2,11,13,14,12,0,5,7,17,16,6),invert=T)
+DimPlot(neurons)
+```
+
+```{r}
+neurons <- FindVariableFeatures(object = neurons,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+neurons <- ScaleData(object = neurons,vars.to.regress = c('nCount_RNA',"donor"))
+
+source('../helperfunctions/pc_modification_functions_S3_forRNA.R')
+
+neurons<-RunTruncatedPCA(neurons,n.genes.pc = 60,npcs=30)
+
+```
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+ElbowPlot(object = neurons,ndims = 30)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+neurons <- JackStraw(object = neurons, dims=30)
+neurons<- ScoreJackStraw(neurons,dims=1:30)
+JackStrawPlot(object = neurons,dims=1:30)
+```
+
+
+```{r, fig.height=5, fig.width=7}
+neurons<- FindNeighbors(neurons,dims=1:23)
+neurons <- FindClusters(object = neurons, resolution = 1)
+```
+
+
+
+```{r, fig.height=4, fig.width=15, message=FALSE, warnings=FALSE}
+neurons <- RunTSNE(object = neurons, dims = 1:23, perplexity=30, dim.embed = 2)
+
+
+p1<-DimPlot(object = neurons, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(neurons,group.by = 'donor')
+p4<-DimPlot(neurons,group.by = 'orig.ident')
+(p1 | p2 | p4)
+```
+
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = neurons, features = c("SNAP25","SLC17A6","SLC6A5","GAD1","TBR1","KLHL1"), reduction= "tsne")
+
+```
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = neurons, features = c("SNAP25","SLC17A6","SLC6A5","GAD1","CREB5","GRM2"), reduction= "tsne")
+```
+look at contribution from each sort
+
+```{r}
+table(neurons$donor,neurons$RNA_snn_res.1)
+```
+
+```{r}
+
+VlnPlot(object = neurons, feature = c("nFeature_RNA", "nCount_RNA"))
+
+```
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = neurons, features = c("OLIG1","OLIG2","GFAP","OPALIN","NOSTRIN","TYROBP","SLC1A3"), reduction= "tsne")
+```
+
+remove crappy clusters (9) and the CREB5 positive neuron/non-neuronal cluster (9): creb5 was not detected in starmap..
+GRM2 labels granule cell interneurons(compare CBINH2 from mousebrain.org), let's also kick out 13, which is also strangely overrepresented in mouse 3
+
+
+```{r}
+neurons2<-subset(neurons, idents=c(9,6,13),invert=T)
+```
+```{r}
+neurons2 <- FindVariableFeatures(object = neurons2,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+neurons2 <- ScaleData(object = neurons2,vars.to.regress = c('nCount_RNA',"donor"))
+
+
+
+neurons2<-RunTruncatedPCA(neurons2,n.genes.pc = 60,npcs=30)
+
+```
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+ElbowPlot(object = neurons2,ndims = 30)
+```
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+neurons2 <- JackStraw(object = neurons2, dims=30)
+neurons2<- ScoreJackStraw(neurons2,dims=1:30)
+JackStrawPlot(object = neurons2,dims=1:30)
+```
+
+
+```{r, fig.height=5, fig.width=7}
+neurons2<- FindNeighbors(neurons2,dims=1:18)
+neurons2 <- FindClusters(object = neurons2, resolution = 1)
+```
+
+
+
+
+```{r, fig.height=4, fig.width=15, message=FALSE, warnings=FALSE}
+neurons2 <- RunTSNE(object = neurons2, dims = 1:18, perplexity=30, dim.embed = 2)
+
+
+p1<-DimPlot(object = neurons2, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(neurons2,group.by = 'donor')
+p4<-DimPlot(neurons2,group.by = 'orig.ident')
+(p1 | p2 | p4)
+```
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = neurons2, features = c("SNAP25","SLC17A6","SLC6A5","GAD1","CREB5","GRM2"), reduction= "tsne")
+```
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = neurons2, features = c("SNAP25","SLC17A6","SLC6A5","GAD1","LGI2","EOMES","NXPH1","PTPRK"), reduction= "tsne")
+```
+
+```{r}
+table(neurons2$donor,neurons2$RNA_snn_res.1)
+```
+
+```{r}
+
+VlnPlot(object = neurons2, feature = c("nFeature_RNA", "nCount_RNA"))
+
+```
+
+Let's look at inhibitory neurons.
+
+
+grab all inhibitory clusters and run through standard steps to improve resolution before filtering out contaminating cell types.
+```{r}
+inh<-subset(neurons2,idents=c(4,11,12,10,6,2),invert=F)
+```
+
+
+
+```{r}
+inh <- FindVariableFeatures(object = inh,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+inh <- ScaleData(object = inh,vars.to.regress = c('nCount_RNA'))
+inh<-RunTruncatedPCA(inh,n.genes.pc = 60,npcs=30)
+ElbowPlot(object = inh)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#inh <- JackStraw(object = inh, dims=20)
+#inh <- ScoreJackStraw(inh,dims=1:20)
+#JackStrawPlot(object = inh,dims=1:20)
+```
+
+```{r, fig.height=5, fig.width=7}
+inh<- FindNeighbors(inh,dims=1:9)
+inh <- FindClusters(object = inh, resolution = 2)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+inh <- RunTSNE(object = inh, dims = 1:9, perplexity=30, dim.embed = 2)
+
+
+p1<-DimPlot(object = inh, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(inh,group.by = 'donor')
+p4<-DimPlot(inh,group.by = 'orig.ident')
+plot_grid(p1,p2,p4,ncol=2)
+```
+```{r}
+FeaturePlot(inh,c("nFeature_RNA","nCount_RNA"))
+```
+
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = inh, slot = "scale.data"))
+
+merge.param <- de_param(padj.th     = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.6, 
+                     de.score.th = 40)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = inh, slot = "data")), 
+                         cl = inh$RNA_snn_res.2, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+if (is.null(merge.result))
+  {inh$merged.res.2<-1
+} else {
+inh$merged.res.2<-paste0("inh_",merge.result$cl)
+}
+
+```
+```{r,fig.height=4,fig.width=15}
+p2<-DimPlot(inh,group.by = "merged.res.2",label=T)
+p1<-DimPlot(inh,group.by = "RNA_snn_res.2")
+p4<-DimPlot(inh,group.by = 'FACS')
+
+plot_grid(p2,p1,p4,ncol=3)
+```
+
+```{r,fig.width=15,fig.height=10}
+FeaturePlot(inh,c("SNAP25","SLC17A6","GAD1","SLC6A5","ETV1","GAD2"))
+```
+
+```{r}
+Idents(inh)<-'merged.res.2'
+VlnPlot(inh,c("nCount_RNA","nFeature_RNA"))
+```
+```{r}
+m1v4<-FindMarkers(inh,ident.1 = "inh_1",ident.2 = "inh_4",logfc.threshold = 1,min.diff.pct = 0.3)
+m1v4
+```
+
+```{r}
+FeaturePlot(inh,c("CHL1","CPNE4","SEMA5A","RXFP1"))
+```
+```{r}
+inhmarkers<-FindAllMarkers(inh,logfc.threshold = 1,min.diff.pct = 0.3)
+inhmarkers %>% group_by(cluster) %>% top_n(10,avg_logFC)
+```
+
+```{r}
+DimPlot(inh,group.by = 'donor')
+```
+
+```{r,fig.width=15,fig.height=10}
+FeaturePlot(inh,c("SNAP25","SLC17A6","GAD1","OLIG1","OLIG2","GFAP","OPALIN","NOSTRIN","TYROBP","SLC1A3","CALB1","PCP1","PCP4","GRM1"))
+```
+```{r}
+VlnPlot(inh,c("GRM1"))
+```
+
+all mouse CN clusters are GRM1+. all chicken ex clusters are GRM1+. all but inh_9 and inh_6 are GRM1+. these are likely contaminants to remove. run cleaned up dataset through pipeline.
+
+```{r}
+inh<-subset(inh,idents=c("inh_6","inh_9"),invert=T)
+```
+
+```{r}
+inh <- FindVariableFeatures(object = inh,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+inh <- ScaleData(object = inh,vars.to.regress = c('nCount_RNA'))
+#inh <- RunPCA(object = inh,npcs = 30,verbose = FALSE)
+```
+
+```{r}
+inh<-RunTruncatedPCA(inh,n.genes.pc = 60,npcs=30)
+ElbowPlot(object = inh)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#inh <- JackStraw(object = inh, dims=20)
+#inh <- ScoreJackStraw(inh,dims=1:20)
+#JackStrawPlot(object = inh,dims=1:20)
+```
+
+```{r, fig.height=5, fig.width=7}
+inh<- FindNeighbors(inh,dims=1:8)
+inh <- FindClusters(object = inh, resolution = 2)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+inh <- RunTSNE(object = inh, dims = 1:9, perplexity=30, dim.embed = 2)
+
+
+p1<-DimPlot(object = inh, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(inh,group.by = 'donor')
+p4<-DimPlot(inh,group.by = 'orig.ident')
+(p1|p2|p4)
+```
+
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = inh, slot = "scale.data"))
+
+merge.param <- de_param(padj.th     = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.6, 
+                     de.score.th = 40)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = inh, slot = "data")), 
+                         cl = inh$RNA_snn_res.2, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+if (is.null(merge.result))
+  {inh$merged.res.2<-1
+} else {
+inh$merged.res.2<-paste0("inh_",merge.result$cl)
+}
+
+```
+```{r,fig.height=4,fig.width=15}
+p2<-DimPlot(inh,group.by = "merged.res.2",label=T)
+p1<-DimPlot(inh,group.by = "RNA_snn_res.2")
+p4<-DimPlot(inh,group.by = 'FACS')
+
+plot_grid(p2,p1,p4,ncol=3)
+```
+
+
+Let's look at excitatory neurons. select all excitatory neurons and run through standard pipeline.
+
+```{r}
+ex<-subset(neurons2,idents=c(7,1,0,8,9,5,3))
+```
+
+
+```{r}
+ex <- FindVariableFeatures(object = ex,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+ex <- ScaleData(object = ex,vars.to.regress = c('nCount_RNA',"donor"))
+ex<-RunTruncatedPCA(ex,n.genes.pc = 60,npcs=30)
+ElbowPlot(object = ex)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#ex <- JackStraw(object = ex, dims=20)
+#ex <- ScoreJackStraw(ex,dims=1:20)
+#JackStrawPlot(object = ex,dims=1:20)
+```
+cluster at low resolution
+```{r, fig.height=5, fig.width=7}
+ex<- FindNeighbors(ex,dims=1:12)
+ex <- FindClusters(object = ex, resolution = 1)
+```
+at higher resolution
+```{r, fig.height=5, fig.width=7}
+ex<- FindNeighbors(ex,dims=1:12)
+ex <- FindClusters(object = ex, resolution = 3)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+ex <- RunTSNE(object = ex, dims = 1:12, perplexity=30, dim.embed = 2,)
+
+
+p1<-DimPlot(object = ex, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(ex,group.by = 'donor')
+p4<-DimPlot(ex,group.by = 'orig.ident')
+plot_grid(p1,p2,p4,ncol=2)
+```
+
+
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = ex, slot = "scale.data"))
+
+merge.param <- de_param(padj.th     = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.6, 
+                     de.score.th = 40)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = ex, slot = "data")), 
+                         cl = ex$RNA_snn_res.3, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+if (is.null(merge.result))
+  {ex$merged.res.3<-1
+} else {
+ex$merged.res.3<-paste0("ex_",merge.result$cl)
+}
+
+```
+```{r,fig.height=4,fig.width=15}
+p2<-DimPlot(ex,group.by = "merged.res.3",label=T)
+p1<-DimPlot(ex,group.by = "RNA_snn_res.3")
+p4<-DimPlot(ex,group.by = 'FACS')
+
+plot_grid(p2,p1,p4,ncol=3)
+```
+
+```{r,fig.width=15,fig.height=10}
+FeaturePlot(ex,c("SNAP25","SLC17A6","TBR1","PAX5","LHX9","RSPO1"))
+```
+
+```{r}
+Idents(ex)<-'merged.res.3'
+VlnPlot(ex,c("nCount_RNA","nFeature_RNA"))
+```
+
+subcluster the big groups of excitatory neurons to make sure we are not missing any structure.
+start with ex_0
+```{r}
+ex0<-subset(ex,idents=c("ex_0"))
+```
+
+
+```{r}
+ex0 <- FindVariableFeatures(object = ex0,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+ex0 <- ScaleData(object = ex0,vars.to.regress = c('nCount_RNA',"donor"))
+
+ex0<-RunTruncatedPCA(ex0,n.genes.pc = 60,npcs=30)
+
+ElbowPlot(object = ex0)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#ex0 <- JackStraw(object = ex0, dims=20)
+#ex0 <- ScoreJackStraw(ex0,dims=1:20)
+#JackStrawPlot(object = ex0,dims=1:20)
+```
+```{r, fig.height=5, fig.width=7}
+ex0<- FindNeighbors(ex0,dims=1:8)
+ex0 <- FindClusters(object = ex0, resolution = 3)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+ex0 <- RunTSNE(object = ex0, dims = 1:10, perplexity=20, dim.embed = 2,)
+
+
+p1<-DimPlot(object = ex0, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(ex0,group.by = 'donor')
+p4<-DimPlot(ex0,group.by = 'orig.ident')
+plot_grid(p1,p2,p4,ncol=2)
+```
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = ex0, slot = "scale.data"))
+
+merge.param <- de_param(padj.th     = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.6, 
+                     de.score.th = 40)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = ex0, slot = "data")), 
+                         cl = ex0$RNA_snn_res.3, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+if (is.null(merge.result))
+  {ex0$merged.res.3<-1
+} else {
+ex0$merged.res.3<-paste0("ex_",merge.result$cl)
+}
+
+```
+```{r,fig.height=4,fig.width=15}
+p2<-DimPlot(ex0,group.by = "merged.res.3",label=T)
+p1<-DimPlot(ex0,group.by = "RNA_snn_res.3")
+p4<-DimPlot(ex0,group.by = 'FACS')
+
+plot_grid(p2,p1,p4,ncol=3)
+```
+
+```{r}
+Idents(ex0)<-'merged.res.3'
+m<-FindMarkers(ex0,ident.1 = "ex_0",logfc.threshold = 1)
+m
+```
+
+```{r,fig.width=15,fig.height=10}
+FeaturePlot(ex0,rownames(m)[1:12])
+```
+
+Rename parts of ex0 in ex.
+
+```{r}
+Idents(ex,cells=WhichCells(ex0,idents='ex_0'))='ex_0_0'
+Idents(ex,cells=WhichCells(ex0,idents='ex_1'))='ex_0_1'
+ex$merged.res.3.m<-Idents(ex)
+#save(ex,file='ex.RData')
+
+```
+
+```{r}
+DimPlot(ex,group.by = 'merged.res.3.m')
+```
+
+Now look at the interposed like TBR1- group
+```{r}
+IN<-subset(ex,idents=c("ex_5","ex_13","ex_15"))
+```
+
+
+```{r}
+IN <- FindVariableFeatures(object = IN,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+IN <- ScaleData(object = IN,vars.to.regress = c('nCount_RNA',"donor"))
+#ex <- RunPCA(object = ex,npcs = 30,verbose = FALSE)
+```
+
+```{r}
+IN<-RunTruncatedPCA(IN,n.genes.pc = 60,npcs=30)
+ElbowPlot(object = IN)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#IN <- JackStraw(object = IN, dims=20)
+#IN <- ScoreJackStraw(IN,dims=1:20)
+#JackStrawPlot(object = IN,dims=1:20)
+```
+```{r, fig.height=5, fig.width=7}
+IN<- FindNeighbors(IN,dims=1:11)
+IN <- FindClusters(object = IN, resolution = 3)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+IN <- RunTSNE(object = IN, dims = 1:10, perplexity=20, dim.embed = 2,)
+
+
+p1<-DimPlot(object = IN, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(IN,group.by = 'donor')
+p4<-DimPlot(IN,group.by = 'orig.ident')
+p5<-FeaturePlot(IN,"nFeature_RNA")
+plot_grid(p1,p2,p4,p5,ncol=2)
+```
+```{r,fig.width=15,fig.height=12}
+#FeaturePlot(IN,paste0("PC_",1:20),cols = c("navy", "olivedrab1"))
+```
+
+
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = IN, slot = "scale.data"))
+
+merge.param <- de_param(padj.th     = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.6, 
+                     de.score.th = 20)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = IN, slot = "data")), 
+                         cl = IN$RNA_snn_res.3, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+if (is.null(merge.result))
+  {IN$merged.res.3<-1
+} else {
+IN$merged.res.3<-paste0("ex_",merge.result$cl)
+}
+
+```
+```{r,fig.height=4,fig.width=15}
+p2<-DimPlot(IN,group.by = "merged.res.3",label=T)
+p1<-DimPlot(IN,group.by = "RNA_snn_res.3")
+p4<-DimPlot(IN,group.by = 'FACS')
+
+plot_grid(p2,p1,p4,ncol=3)
+```
+```{r}
+Idents(IN)<-'merged.res.3'
+m<-FindMarkers(IN,ident.1 = "ex_3",ident.2 = "ex_1",logfc.threshold = 1,min.diff.pct = 0.3)
+m
+```
+```{r,fig.width=15,fig.height=10}
+FeaturePlot(IN,rownames(m)[1:12])
+```
+Rename parts of IN in ex.
+
+```{r}
+Idents(IN)<-"merged.res.3"
+Idents(ex)<-"merged.res.3.m"
+Idents(ex,cells=WhichCells(IN,idents='ex_0'))='ex_IN_0'
+Idents(ex,cells=WhichCells(IN,idents='ex_1'))='ex_IN_1'
+Idents(ex,cells=WhichCells(IN,idents='ex_2'))='ex_IN_2'
+Idents(ex,cells=WhichCells(IN,idents='ex_3'))='ex_IN_3'
+
+
+ex$merged.res.3.m<-Idents(ex)
+```
+
+look at main blob of cells.
+
+```{r}
+Idents(ex)<-'merged.res.3'
+M<-subset(ex,idents=c("ex_0","ex_5","ex_15","ex_13"),invert=T)
+```
+
+
+
+```{r}
+M <- FindVariableFeatures(object = M,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+M <- ScaleData(object = M,vars.to.regress = c('nCount_RNA',"donor"))
+M<-RunTruncatedPCA(M,n.genes.pc = 60,npcs=30)
+ElbowPlot(object = M)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#M <- JackStraw(object = M, dims=20)
+#M <- ScoreJackStraw(M,dims=1:20)
+#JackStrawPlot(object = M,dims=1:20)
+```
+```{r, fig.height=5, fig.width=7}
+M<- FindNeighbors(M,dims=1:9)
+M <- FindClusters(object = M, resolution = 3)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+M <- RunTSNE(object = M, dims = 1:9, perplexity=30, dim.embed = 2,)
+
+
+p1<-DimPlot(object = M, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(M,group.by = 'donor')
+p4<-DimPlot(M,group.by = 'orig.ident')
+p5<-FeaturePlot(M,"nFeature_RNA")
+plot_grid(p1,p2,p4,p5,ncol=2)
+```
+
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = M, slot = "scale.data"))
+
+merge.param <- de_param(padj.th     = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.6, 
+                     de.score.th = 20)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = M, slot = "data")), 
+                         cl = M$RNA_snn_res.3, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+if (is.null(merge.result))
+  {M$merged.res.3<-1
+} else {
+M$merged.res.3<-paste0("ex_",merge.result$cl)
+}
+
+```
+```{r,fig.height=4,fig.width=15}
+p2<-DimPlot(M,group.by = "merged.res.3",label=T)
+p1<-DimPlot(M,group.by = "RNA_snn_res.3")
+p4<-DimPlot(M,group.by = 'FACS')
+
+plot_grid(p2,p1,p4,ncol=3)
+```
+
+```{r}
+Idents(ex)<-"merged.res.3.m"
+Idents(M)<-'merged.res.3'
+Idents(ex,cells=WhichCells(M,idents='ex_0'))='ex_M_0'
+Idents(ex,cells=WhichCells(M,idents='ex_1'))='ex_M_1'
+Idents(ex,cells=WhichCells(M,idents='ex_2'))='ex_M_2'
+Idents(ex,cells=WhichCells(M,idents='ex_3'))='ex_M_3'
+Idents(ex,cells=WhichCells(M,idents='ex_4'))='ex_M_4'
+Idents(ex,cells=WhichCells(M,idents='ex_5'))='ex_M_5'
+Idents(ex,cells=WhichCells(M,idents='ex_6'))='ex_M_6'
+Idents(ex,cells=WhichCells(M,idents='ex_7'))='ex_M_7'
+Idents(ex,cells=WhichCells(M,idents='ex_9'))='ex_M_8'
+Idents(ex,cells=WhichCells(M,idents='ex_10'))='ex_M_9'
+Idents(ex,cells=WhichCells(M,idents='ex_13'))='ex_M_10'
+
+
+ex$merged.res.3.m<-Idents(ex)
+
+```
+
+
+```{r}
+```
+
+

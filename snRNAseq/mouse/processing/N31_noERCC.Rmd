@@ -1,0 +1,509 @@
+---
+title: "Analyse mouse scRNAseq data from geneXcells matices"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+ 
+ 
+```{r}
+library(Seurat)
+library(dplyr)
+library(Matrix)
+library(cowplot)
+library(scrattch.hicat)
+library(patchwork)
+```
+
+```{r}
+#setwd('~/postdoc2/Gedankenpapers/CNevomanuscript/code/snRNAseq/mouse/processing/')
+```
+
+Load data.
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+load('../data/rawdata.RData')
+
+
+p1<-DimPlot(object = N31, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(object = N31, reduction = 'tsne', label=TRUE,group.by = 'DCN')
+p3<-DimPlot(object = N31, reduction = 'tsne', label=TRUE,group.by = 'FACS')
+plot_grid(p1,p2,p3,ncol = 3)
+```
+
+
+plot number of detected genes and reads per cluster
+```{r,fig.width=15,fig.height=6}
+VlnPlot(object = N31, feature = c("nFeature_RNA", "nCount_RNA"))
+```
+
+Plot maker genes
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = N31, features = c("Snap25","Slc17a6","Gad1","Slc6a5","Gabra6"), reduction= "tsne")
+
+```
+
+
+Subset data:
+clusters 1,0,18 gabra6+
+clusters 4,9,14,15,17 low genes/counts
+
+```{r}
+dcn<-subset(N31,idents=c(0,1,18,4,9,14,15,17),invert=T)
+DimPlot(dcn)
+```
+
+
+```{r}
+dcn <- FindVariableFeatures(object = dcn,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+dcn <- ScaleData(object = dcn,vars.to.regress = c('nCount_RNA','FACS','nFeature_RNA'))
+#dcn <- RunPCA(object = dcn,npcs = 30,verbose = FALSE)
+source('../../helperfunctions/pc_modification_functions_S3_forRNA.R')
+dcn<-RunTruncatedPCA(dcn,n.genes.pc = 40)
+```
+
+```{r}
+ElbowPlot(object = dcn,ndims = 30)
+```
+
+```{r}
+usefuldims=1:26
+dims.remove=c(10,12,13,18,19,21,23,24,25)
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+
+```{r, fig.height=5, fig.width=7}
+dcn<- FindNeighbors(dcn,dims=usefuldims)
+dcn <- FindClusters(object = dcn, reduction = "pca", dims = usefuldims, resolution = 2)
+```
+
+
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+dcn <- RunTSNE(object = dcn, dims = usefuldims, perplexity=30, dim.embed = 2,seed.use = 2)
+
+
+p1<-DimPlot(object = dcn, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(object = dcn, reduction = 'tsne', label=TRUE,group.by = 'DCN')
+p3<-DimPlot(object = dcn, reduction = 'tsne', label=TRUE,group.by = 'FACS')
+plot_grid(p1,p2,p3,ncol = 3)
+```
+```{r,fig.width=15,fig.height=5}
+VlnPlot(dcn,features=c("nFeature_RNA", "nCount_RNA"))
+```
+
+Figure out which dimensions are actually useful for clustering.
+
+```{r,fig.height=25,fig.width=15}
+#FeaturePlot(dcn, features=paste0("PC_", 1:30),cols = c("navy", "olivedrab1"))
+```
+
+
+plot maker genes
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = dcn, features = c("Snap25","Slc17a6","Gad1","Slc6a5","Gabra6"), reduction= "tsne")
+```
+
+
+
+
+let's look only at the excitatory neurons.
+
+```{r}
+ex<-subset(dcn,idents=c(13,6,10,4,5,8,1),invert=F)
+DimPlot(ex)
+```
+
+
+
+```{r}
+ex <- FindVariableFeatures(object = ex,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+ex <- ScaleData(object = ex,vars.to.regress = c('nCount_RNA','FACS','nFeature_RNA'))
+
+
+ext<-RunTruncatedPCA(ex,dim=1:30)
+ElbowPlot(object = ext,ndims = 30)
+```
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#ext <- JackStraw(object = ext, dims=30)
+#ext<- ScoreJackStraw(ext,dims=1:30)
+#JackStrawPlot(object = ext,dims=1:30)
+```
+
+
+```{r}
+usefuldims=1:18
+dims.remove=c(17)
+dims.remove=c()
+
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+replot with dropped pcs
+```{r,fig.width=15,fig.height=6}
+ext<- FindNeighbors(ext,dims=usefuldims)
+ext <- RunTSNE(object = ext, dims = usefuldims, perplexity=30, dim.embed = 2)
+ext <- FindClusters(object = ext, reduction.type = "pca", dims.use = usefuldims, resolution = 2, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+p1<-DimPlot(object = ext, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(object = ext, reduction = 'tsne', label=TRUE,group.by = 'DCN')
+p3<-DimPlot(object = ext, reduction = 'tsne', label=TRUE,group.by = 'FACS')
+plot_grid(p1,p2,p3,ncol = 3)
+```
+
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = ext, slot = "scale.data"))
+
+merge.param <- de_param(padj.th = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.5, 
+                     de.score.th = 40)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = ext, slot = "data")), 
+                         cl = ext$RNA_snn_res.2, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+ext$merged.res.2<-as.factor(paste('ex_',merge.result$cl,sep=''))
+
+```
+```{r,fig.height=6,fig.width=15}
+p2<-DimPlot(ext,group.by = "merged.res.2",label=T)
+p1<-DimPlot(ext,group.by = "RNA_snn_res.2")
+p3<-DimPlot(ext,group.by = 'DCN')
+plot_grid(p1,p2,p3,ncol=3)
+```
+```{r}
+Idents(ext)<-'merged.res.2'
+```
+
+```{r,fig.height=6,fig.width=15}
+p2<-DimPlot(ext,group.by = "merged.res.2")
+p1<-DimPlot(ext,group.by = "FACS")
+p3<-DimPlot(ext,group.by = 'DCN')
+plot_grid(p2,p3,p1,ncol=3)
+```
+
+```{r}
+#save(file='ex_celltypes.RData',ext)
+```
+
+
+
+
+now look at non-glycinergic inhibitory cell types
+```{r}
+inh<-subset(dcn,idents=c(0,2,9),invert=F)
+
+DimPlot(inh)
+```
+
+
+```{r}
+inh <- FindVariableFeatures(object = inh,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+inh <- ScaleData(object = inh,vars.to.regress = c('nCount_RNA','FACS','nFeature_RNA'))
+
+
+source('../../helperfunctions/pc_modification_functions_S3_forRNA.R')
+
+inh<-RunTruncatedPCA(inh,n.genes.pc = 40)
+ElbowPlot(object = inh)
+```
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#inh <- JackStraw(object = inh, dims=20)
+#inh <- ScoreJackStraw(inh,dims=1:20)
+#JackStrawPlot(object = inh,dims=1:20)
+```
+
+```{r}
+usefuldims=1:4
+dims.remove=c(1,3)
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+
+```{r}
+inh<- FindNeighbors(object = inh,dims=usefuldims)
+inh<- FindClusters(object = inh, resolution = 2)
+```
+
+
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+inh <- RunTSNE(object = inh, dims = usefuldims, perplexity=30, dim.embed = 2)
+
+p1<-DimPlot(object = inh, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(object = inh, reduction = 'tsne', label=TRUE,group.by = 'DCN')
+p3<-DimPlot(object = inh, reduction = 'tsne', label=TRUE,group.by = 'FACS')
+plot_grid(p1,p2,p3,ncol = 3)
+```
+
+```{r,fig.height=12,fig.width=15}
+#FeaturePlot(inh, features=paste0("PC_", 1:4),cols = c("navy", "olivedrab1"))
+```
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = inh, slot = "scale.data"))
+
+merge.param <- de_param(padj.th     = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.6, 
+                     de.score.th = 40)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = inh, slot = "data")), 
+                         cl = inh$RNA_snn_res.2, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+if (is.null(merge.result))
+  {inh$merged.res.2<-1
+} else {
+inh$merged.res.2<-merge.result$cl
+}
+
+```
+```{r,fig.height=6,fig.width=15}
+p2<-DimPlot(inh,group.by = "merged.res.2")
+p1<-DimPlot(inh,group.by = "RNA_snn_res.2")
+p3<-DimPlot(inh,group.by = 'DCN')
+p4<-DimPlot(inh,group.by = 'FACS')
+
+plot_grid(p2,p3,p4,ncol=3)
+```
+
+
+```{r}
+Idents(inh)<-"merged.res.2"
+```
+
+```{r,fig.width=15,fig.height=5}
+VlnPlot(inh,features=c("nFeature_RNA", "nCount_RNA"))
+```
+plot marker genes
+
+```{r, fig.height=10, fig.width=15}
+FeaturePlot(object = inh, features = c("Snap25","Slc17a6","Gad1","Slc6a5"), reduction= "tsne")
+```
+
+
+
+
+
+
+
+
+
+
+Now, lets do this for the big group of glycinergic cells
+
+```{r}
+gly<-subset(dcn,idents=c(3,7,15),invert=F)
+
+DimPlot(gly)
+```
+
+
+```{r}
+gly <- FindVariableFeatures(object = gly,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+gly <- ScaleData(object = gly,vars.to.regress = c('FACS','nFeature_RNA'))
+
+
+source('../../helperfunctions/pc_modification_functions_S3_forRNA.R')
+
+gly<-RunTruncatedPCA(gly,n.genes.pc = 40)
+ElbowPlot(object = gly)
+```
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+gly <- JackStraw(object = gly, dims=20)
+gly <- ScoreJackStraw(gly,dims=1:20)
+JackStrawPlot(object = gly,dims=1:20)
+```
+
+```{r}
+usefuldims=1:5
+dims.remove=c()
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+
+```{r}
+gly<- FindNeighbors(object = gly,dims=usefuldims)
+gly<- FindClusters(object = gly, reduction.type = "pca", dims.use = usefuldims, resolution = 2, print.output = 0, save.SNN = TRUE, force.recalc = TRUE,algorithm = 1,n.start = 20)
+```
+
+
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+gly <- RunTSNE(object = gly, dims = usefuldims, perplexity=30, dim.embed = 2)
+
+p1<-DimPlot(object = gly, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(object = gly, reduction = 'tsne', label=TRUE,group.by = 'DCN')
+p3<-DimPlot(object = gly, reduction = 'tsne', label=TRUE,group.by = 'FACS')
+plot_grid(p1,p2,p3,ncol = 3)
+```
+
+
+merge clusters using allen package.
+```{r}
+rd.dat <- t(GetAssayData(object = gly, slot = "scale.data"))
+
+merge.param <- de_param(padj.th     = 0.05, 
+                     lfc.th      = 1, 
+                     low.th      = 1, 
+                     q1.th       = 0.4, 
+                     q.diff.th   = 0.6, 
+                     de.score.th = 40)
+
+merge.result <- merge_cl(as.matrix(GetAssayData(object = gly, slot = "data")), 
+                         cl = gly$RNA_snn_res.2, 
+                         rd.dat = rd.dat,
+                         de.param = merge.param)
+
+if (is.null(merge.result))
+  {gly$merged.res.2<-1
+} else {
+gly$merged.res.2<-merge.result$cl
+}
+
+```
+```{r,fig.height=6,fig.width=15}
+p2<-DimPlot(gly,group.by = "merged.res.2")
+p1<-DimPlot(gly,group.by = "RNA_snn_res.2")
+p3<-DimPlot(gly,group.by = 'DCN')
+p4<-DimPlot(gly,group.by = 'FACS')
+
+plot_grid(p2,p3,p4,ncol=3)
+```
+```{r,fig.height=12,fig.width=15}
+#FeaturePlot(gly, features=paste0("PC_", 1:10),cols = c("navy", "olivedrab1"))
+```
+
+
+
+```{r}
+Idents(gly)<-"merged.res.2"
+```
+
+
+
+
+
+Now let's integrate these blobs of inhibitory or glycinergic cells with the smaller distinct groups of those cells and save out the cell types. 
+
+```{r}
+gly.complete<-subset(dcn,idents = c(3,7,15,12,16))
+#annotate
+prelim.clusters<-as.data.frame(gly.complete$RNA_snn_res.2)
+prelim.clusters$`gly.complete$RNA_snn_res.2`<-as.character(prelim.clusters$`gly.complete$RNA_snn_res.2`)
+
+prelim.clusters[names(gly$merged.res.2),]<-paste('gly_',as.character(gly$merged.res.2))
+prelim.clusters$`gly.complete$RNA_snn_res.2`<-as.factor(prelim.clusters$`gly.complete$RNA_snn_res.2`)
+colnames(prelim.clusters)<-'prelim.clusters'
+gly.complete$prelim.clusters<-(prelim.clusters)
+
+Idents(gly.complete)<-'prelim.clusters'
+DimPlot(gly.complete)
+```
+
+
+```{r}
+gly.complete <- FindVariableFeatures(object = gly.complete,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+gly.complete <- ScaleData(object = gly.complete,vars.to.regress = c('nCount_RNA','FACS','nFeature_RNA'))
+gly.complete<-RunTruncatedPCA(gly.complete,n.genes.pc = 40)
+ElbowPlot(object = gly.complete)
+```
+
+```{r}
+usefuldims=1:10
+dims.remove=c()
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+
+```{r}
+gly.complete<- FindNeighbors(object = gly.complete,dims=usefuldims)
+```
+
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+gly.complete <- RunTSNE(object = gly.complete, dims = usefuldims, perplexity=30, dim.embed = 2)
+
+p1<-DimPlot(object = gly.complete, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(object = gly.complete, reduction = 'tsne', label=TRUE,group.by = 'DCN')
+p3<-DimPlot(object = gly.complete, reduction = 'tsne', label=TRUE,group.by = 'FACS')
+plot_grid(p1,p2,p3,ncol = 3)
+```
+rename idents
+
+```{r,fig.width=15,fig.height=6}
+gly.complete <- RenameIdents(object = gly.complete, `gly_ 0` = "gly_0")
+gly.complete <- RenameIdents(object = gly.complete, `gly_ 1` = "gly_1")
+gly.complete <- RenameIdents(object = gly.complete, `gly_ 4` = "gly_2")
+gly.complete <- RenameIdents(object = gly.complete, `12` = "gly_3")
+gly.complete <- RenameIdents(object = gly.complete, `16` = "gly_4")
+
+gly.complete[["prelim.clusters"]] <- Idents(object = gly.complete)
+
+
+p1<-DimPlot(object = gly.complete, reduction = 'tsne', label=TRUE)
+p2<-DimPlot(object = gly.complete, reduction = 'tsne', label=F,group.by = 'DCN')
+p3<-DimPlot(object = gly.complete, reduction = 'tsne', label=F,group.by = 'FACS')
+plot_grid(p1,p2,p3,ncol = 3)
+
+```
+```{r,fig.height=10,fig.width=15}
+FeaturePlot(gly.complete,c("Slc17a6","Gad1","Slc6a5","Slc6a1"))
+```
+
+
+
+
+
+
+
+
+Now let's port the subclustering results back to the integrative dcn dataset
+```{r}
+final.clusters<-as.data.frame(dcn$RNA_snn_res.2)
+final.clusters$`dcn$RNA_snn_res.2`<-as.character(final.clusters$`dcn$RNA_snn_res.2`)
+final.clusters[names(ext$merged.res.2),]<-paste('',as.character(ext$merged.res.2),sep='')
+final.clusters[names(inh$merged.res.2),]<-paste('inh_',as.character(inh$merged.res.2),sep='')
+final.clusters[names(gly.complete$prelim.clusters),]<-paste('',as.character(gly.complete$prelim.clusters),sep='')
+final.clusters$`dcn$RNA_snn_res.2`<-as.factor(final.clusters$`dcn$RNA_snn_res.2`)
+colnames(final.clusters)<-'final.clusters'
+dcn$final.clusters<-(final.clusters)
+
+```
+
+```{r,fig.height=6,fig.width=15}
+p1<-DimPlot(dcn,group.by = "final.clusters",pt.size = 1,label = T)
+p2<-DimPlot(dcn,group.by = 'DCN',pt.siz=1)
+p3<-DimPlot(dcn,group.by = 'FACS')
+plot_grid(p1,p2,ncol = 2)
+```
+```{r,fig.height=10,fig.width=15}
+FeaturePlot(dcn,c("Snap25","Slc17a6","Gad1","Slc6a5"))
+```
+
+
+```{r,fig.width=15,fig.height=6}
+Idents(dcn)<-'final.clusters'
+VlnPlot(dcn,c('nFeature_RNA','nCount_RNA'),ncol = 1)
+
+```
+
+
+
+
+
+
+
+
+
+
+

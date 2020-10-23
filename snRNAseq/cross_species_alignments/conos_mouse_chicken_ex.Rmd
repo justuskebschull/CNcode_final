@@ -1,0 +1,62 @@
+---
+title: "Conos aignment mouse_chicken ex cells"
+output: 
+  pdf_document: 
+    keep_tex: yes
+keep_md: TRUE
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(conos)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(RColorBrewer)
+library(pvclust)
+library(dendextend)
+library(ComplexHeatmap)
+library(circlize)
+```
+load data
+```{r}
+setwd('~/Documents/mouse_vs_chicken_postreview/')
+load('mouse_chicken_ex_1to1.RData')
+pbmsca<-merge(mouse2,chicken2)
+```
+
+```{r,fig.width=15,fig.height=6}
+pbmcsca.panel <- SplitObject(pbmsca, split.by = "species")
+#pbmcsca.panel <-list(mouse2,chicken2)
+load('~/Documents/mouse_vs_chicken_postreview/DEGs/chickenDEGs_exmvsMouse.RData')
+load("~/Documents/mouse_vs_chicken_postreview/DEGs/mouseDEGs_exmvsMouseinclGly.RData")
+mouseDEGs.filtered<-mouseDEGs[mouseDEGs$avg_logFC>log(2) & mouseDEGs$p_val_adj<0.01,"gene"]
+chickenDEGs.filtered<-chickenDEGs[chickenDEGs$avg_logFC>log(2) & chickenDEGs$p_val_adj<0.01,"gene"]
+interestinggenes<-intersect(mouseDEGs.filtered,chickenDEGs.filtered)
+
+for (i in 1:length(pbmcsca.panel)) {
+    pbmcsca.panel[[i]] <- NormalizeData(pbmcsca.panel[[i]]) 
+}    
+pbmcsca.panel[[1]]@assays$RNA@var.features<-interestinggenes
+pbmcsca.panel[[2]]@assays$RNA@var.features<-interestinggenes
+
+for (i in 1:length(pbmcsca.panel)) {
+    pbmcsca.panel[[i]] <- ScaleData(pbmcsca.panel[[i]]) %>% 
+        RunPCA(verbose = FALSE)
+}
+pbmcsca.con <- Conos$new(pbmcsca.panel)
+pbmcsca.con$buildGraph(k = 15, k.self = 5, space = "CCA", ncomps = 30, matching.method = "mNN", 
+    metric = "angular", score.component.variance = TRUE, verbose = TRUE,)#, alignment.strength = 0.3,same.factor.downweight = 0.1,balancing.factor.per.cell = pbmsca$species)
+pbmcsca.con$findCommunities(method=leiden.community, resolution=0.5)
+pbmcsca.con$embedGraph()
+pbmcsca <- as.Seurat(pbmcsca.con)
+DimPlot(pbmcsca, reduction = "largeVis", group.by = c("species", "leiden", "classes"), ncol = 3)
+```
+```{r}
+DimPlot(pbmcsca, reduction = "largeVis", group.by = c("classes"), split.by = 'species',cols = c('#ff6347','#00688b','#ff6347','#00688b') )
+```
+
+

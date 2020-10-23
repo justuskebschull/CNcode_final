@@ -1,0 +1,455 @@
+---
+title: "Seurat alignment mouse_chicken ex cells"
+output: 
+  pdf_document: 
+    keep_tex: yes
+keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(cowplot)
+library(scrattch.hicat)
+library(dplyr)
+library(patchwork)
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+```
+
+
+Lets try using S3 for cross species alignment of all excitatory neurons between mouse and chicken.
+
+load Chicken data
+```{r}
+setwd('~/postdoc2/DCN_sequencing/chicken/plateseq/novaseq44/')
+load('ex.RData')
+
+#define classes:
+Idents(ex)<-'merged.res.3.m.renamed'
+ex<-RenameIdents(ex,'Med.A1'="A","MedL.A1"="A","IntP.A1"="A", "IntP.A2"="A", "IntX.A1"="A", "IntX.A2"="A", "IntX.A3"="A", "Med.B1"="B",  "Med.B2"="B",  "Med.B3"="B",  "Med.B4"="B","Med.B5"="B",  "MedL.B1"="B", "IntP.B1"="B", "IntP.B2"="B", "IntX.B1"="B", "IntX.B2"="B")
+ex$classes<-Idents(ex)
+
+
+all<-(ex)
+chicken.data<-all@assays$RNA@counts
+chicken<-all
+```
+
+
+revert gene names to  ENSGALG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/chicken/plateseq/EnsembleID99_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+counts_translated<-chicken.data[rownames(chicken.data) %in% conversiontable.notrepeated[,2],]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+
+counts_nottranslated<-chicken.data[!rownames(chicken.data) %in% conversiontable.notrepeated[,2],]
+chicken.data2<-rbind(counts_translated,counts_nottranslated)
+```
+
+
+load mouse data
+```{r}
+load(file = '~/postdoc2/DCN_sequencing/scRNAseq/plateseq/Novaseq31/dataforplotting.RData')
+mouse<-RL
+mouse.data<-mouse@assays$RNA@counts
+```
+
+revert gene names to  ENSMUSG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/scRNAseq/plateseq/EnseblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+counts_translated<-mouse.data[rownames(mouse.data) %in% conversiontable.notrepeated[,2],]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+counts_nottranslated<-mouse.data[!rownames(mouse.data) %in% conversiontable.notrepeated[,2],]
+mouse.data2<-rbind(counts_translated,counts_nottranslated)
+```
+
+consider only 1-to-1 orthologs as defined by Ensembl
+```{r}
+#read in ortholog relationships obtained from ensemble biomart
+orth.table<-read.csv(file='~/postdoc2/DCN_sequencing/chicken/plateseq/chicken_mouse_orthologs.txt',header=T)
+#throw out anything that isnt onetoone
+orth.table<-orth.table[orth.table[,"Mouse.homology.type"]=="ortholog_one2one",]
+#drop extra columns
+orth.table.clean<-unique(orth.table[,c("Gene.stable.ID",'Mouse.gene.stable.ID','Mouse.gene.name')])
+
+#throw out what isn't in a 1:1 ortholog
+chicken.data.filtered<-chicken.data2[rownames(chicken.data2) %in% as.character(orth.table.clean$Gene.stable.ID),]
+rownames(chicken.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(chicken.data.filtered),orth.table.clean$Gene.stable.ID)])
+
+mouse.data.filtered<-mouse.data2[rownames(mouse.data2) %in% as.character(orth.table.clean$Mouse.gene.stable.ID),]
+rownames(mouse.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(mouse.data.filtered),orth.table.clean$Mouse.gene.stable.ID)])
+
+#why are there still different numbers of genes?
+chicken.data.filtered2<-chicken.data.filtered[rownames(chicken.data.filtered) %in% rownames(mouse.data.filtered),]
+mouse.data.filtered2<-mouse.data.filtered[rownames(mouse.data.filtered) %in% rownames(chicken.data.filtered2),]
+```
+
+now convert all gene names all back to mouse names for simplicity.
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/scRNAseq/plateseq/EnseblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+counts_translated<-chicken.data.filtered2[rownames(chicken.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-chicken.data.filtered2[!rownames(chicken.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+chicken.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+
+counts_translated<-mouse.data.filtered2[rownames(mouse.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-mouse.data.filtered2[!rownames(mouse.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+mouse.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+```
+
+
+
+
+Set up seurat objects & integrate species. 
+
+```{r}
+mouse2<-CreateSeuratObject(mouse.data.filtered3)
+mouse2@meta.data<-mouse@meta.data
+mouse2$species<-'mouse'
+chicken2<-CreateSeuratObject(chicken.data.filtered3)
+chicken2@meta.data<-chicken@meta.data
+chicken2$species<-'chicken'
+
+#mergeddata<-merge(x=mouse,y=chicken)
+#chicken.list<- SplitObject(object = chicken2, split.by = 'donor')
+#dcn.list<-c(mouse2,chicken.list)
+dcn.list<-list(mouse2,chicken2)
+
+
+for (i in 1:length(x = dcn.list)) {
+    dcn.list[[i]] <- NormalizeData(object = dcn.list[[i]], verbose = FALSE,scale.factor = 1e6)
+    dcn.list[[i]] <- FindVariableFeatures(object = dcn.list[[i]], 
+        selection.method = "vst", nfeatures = 2000, verbose = FALSE)
+}
+
+DCN.anchors <- FindIntegrationAnchors(object.list = dcn.list, dims = 1:40,anchor.features = 2000)
+DCN.integrated <- IntegrateData(anchorset = DCN.anchors, dims = 1:40)
+DefaultAssay(object = DCN.integrated) <- "integrated"
+```
+
+annotate by FACS rounds.
+```{r}
+DCN.integrated$speciesfacs<-as.factor(paste0(DCN.integrated$species,DCN.integrated$FACS))
+DCN.integrated$speciesDCN<-as.factor(paste0(DCN.integrated$species,DCN.integrated$DCN))
+
+DCN.integrated$merged.res.3.m.renamed[is.na(DCN.integrated$merged.res.3.m.renamed)] <- 'mouse'
+
+DCN.integrated$merged.res.3.m.renamed<-factor(DCN.integrated$merged.res.3.m.renamed,levels=c(levels(ex$merged.res.3.m.renamed),'mouse'))
+
+DCN.integrated$final.clusters.merge<-as.character(paste0('C_',DCN.integrated$merged.res.3.m.renamed))
+DCN.integrated$final.clusters.merge[!is.na(DCN.integrated$final.clusters2)] <- paste0('M_',DCN.integrated$final.clusters2[!is.na(DCN.integrated$final.clusters2)])
+
+
+DCN.integrated$final.clusters.merge<-factor(DCN.integrated$final.clusters.merge,levels=c(paste0('C_',levels(ex$merged.res.3.m.renamed)),paste0('M_',levels(RL$final.clusters2))))
+
+
+```
+
+```{r}
+DCN.integrated <- ScaleData(object = DCN.integrated, verbose = FALSE,vars.to.regress = c('speciesfacs'))
+DCN.integrated<-RunPCA(DCN.integrated,dims=1:40)
+ElbowPlot(DCN.integrated)
+```
+
+```{r}
+#DCN.integrated <- JackStraw(DCN.integrated, num.replicate = 100,dims=20)
+#DCN.integrated <- ScoreJackStraw(DCN.integrated, dims = 1:20)
+#JackStrawPlot(DCN.integrated, dims = 1:20)
+```
+
+
+
+```{r,fig.width=12,fig.height=10}
+DCN.integrated <- RunTSNE(object = DCN.integrated, reduction = "pca", 
+    dims = 1:5)
+
+
+DCN.integrated<-FindNeighbors(DCN.integrated,dims = c(1:5))
+DCN.integrated<-FindClusters(DCN.integrated,resolution = 0.1)
+
+
+
+p1 <- DimPlot(object = DCN.integrated, reduction = "tsne", group.by = "species",pt.size=1,cols=c("gold","grey50"))+NoLegend()
+p2 <- DimPlot(object = DCN.integrated, reduction = "tsne", group.by = "classes", 
+    label = F, repel = TRUE,pt.size=1,cols = c('#ff6347','#00688b','#ff6347','#00688b')) +NoLegend()
+p3 <- DimPlot(object = DCN.integrated, reduction = "tsne", group.by = "final.clusters.merge", 
+    label = F, repel = TRUE,pt.size=1,na.value = 'grey50') +
+  scale_color_manual(values = c(RLpalchicken,RLpal,'grey50'))+NoLegend()
+p4 <- DimPlot(DCN.integrated,pt.size = 1,reduction = "tsne")+NoLegend()
+(p1 | p2)/(p3 |p4)
+```
+
+```{r,fig.width=12,fig.height=10}
+p1 <- DimPlot(object = DCN.integrated, reduction = "tsne", group.by = "species",pt.size=1,cols=c("gold","grey50"))+NoLegend()
+p2 <- DimPlot(object = DCN.integrated, reduction = "tsne", group.by = "classes", 
+    label = F, repel = TRUE,pt.size=1,cols = c('#ff6347','#42C6EA','#A32F1F','#00688b')) +NoLegend()
+p3 <- DimPlot(object = DCN.integrated, reduction = "tsne", group.by = "final.clusters.merge", 
+    label = F, repel = TRUE,pt.size=1,na.value = 'grey50') +
+  scale_color_manual(values = c(RLpalchicken,RLpal,'grey50'))+NoLegend()
+p4 <- DimPlot(DCN.integrated,pt.size = 1,reduction = "tsne")+NoLegend()
+(p1 | p2)/(p3 |p4)
+```
+
+
+```{r,fig.width=12,fig.height=6}
+DimPlot(object = DCN.integrated, split.by='species',reduction = "tsne", group.by = "final.clusters.merge", 
+    label = F, repel = TRUE,pt.size=1,na.value = 'grey50') +
+  scale_color_manual(values = c(RLpalchicken,RLpal,'grey50'))
+```
+```{r,fig.width=15,fig.height=6}
+DimPlot(object = DCN.integrated, split.by='species',reduction = "tsne", group.by = "classes", 
+    label = F, repel = TRUE,pt.size=1,na.value = 'grey50',cols = c('#ff6347','#00688b','#ff6347','#00688b'))
+```
+
+```{r,fig.height=2.5,fig.width=10}
+t<-table(DCN.integrated$integrated_snn_res.0.1,DCN.integrated$final.clusters.merge)
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+
+
+#column annotation
+ha_bottom<- HeatmapAnnotation(
+  species=colnames(mat),
+  col=list(species=setNames(c(rep('gold',17),rep('grey50',15)),colnames(mat))),
+  simple_anno_size=unit(2,"mm")
+)
+
+
+Heatmap(mat,col=col1,bottom_annotation=ha_bottom,cluster_columns = F,cluster_rows = F)
+```
+
+
+
+looks like PC1 might just do the trick?
+
+```{r,fig.with=15,fig.height=12}
+p1<-DimPlot(DCN.integrated,reduction="pca",dims=c(1,4),group.by = 'merged.res.3.m.renamed',split.by = 'species',pt.size=1.5)+
+  scale_color_manual(values = c(RLpalchicken,'grey50'))+NoLegend()
+p2<-DimPlot(DCN.integrated,reduction="pca",dims=c(1,4),group.by = 'final.clusters.merge',split.by = 'species',pt.size=1.5)+
+  scale_color_manual(values = c(RLpalchicken,RLpal,'grey50'))+NoLegend()
+p3<-DimPlot(DCN.integrated,reduction="pca",dims=c(1,4),group.by = 'classes',split.by = 'species',pt.size=1.5,cols = c('#ff6347','#00688b','#ff6347','#00688b'))+NoLegend()
+(p1/p2/p3)
+```
+Make a histogram along PC1 for the different classes and species.
+
+```{r,fig.height=3.5,fig.width=15}
+# Build dataset with different distributions
+data <- data.frame(
+  PC1 = DCN.integrated@reductions$pca@cell.embeddings[,1],
+  class = DCN.integrated$classes,
+  species=DCN.integrated$species
+)
+
+# Represent it
+p <- data %>%
+  ggplot( aes(x=PC1, fill=class,y = stat(ncount / sum(count)))) +
+    geom_histogram( color="#e9ecef", alpha=0.6, position = 'identity',binwidth=1) +
+    scale_fill_manual(values=c('#ff6347','#42C6EA','#A32F1F','#00688b')) +
+    scale_color_manual(values=c('#ff6347','#42C6EA','#A32F1F','#00688b')) +
+      facet_grid(~species)+
+    labs(fill="")+ xlim(c(-20, 20))+
+   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+p
+```
+```{r,fig.height=3.5,fig.width=15}
+# Build dataset with different distributions
+data <- data.frame(
+  PC1 = DCN.integrated@reductions$pca@cell.embeddings[DCN.integrated$final.clusters.merge %in% c("M_MedL.Bgly","C_Med.A1"),1],
+  class = DCN.integrated$classes[(DCN.integrated$final.clusters.merge %in% c("M_MedL.Bgly","C_Med.A1"))],
+  cl = DCN.integrated$final.clusters.merge[(DCN.integrated$final.clusters.merge %in% c("M_MedL.Bgly","C_Med.A1"))],
+  species=DCN.integrated$species[(DCN.integrated$final.clusters.merge %in% c("M_MedL.Bgly","C_Med.A1"))]
+)
+
+# Represent it
+p <- data %>%
+  ggplot( aes(x=PC1, fill=cl,y = stat(ncount / sum(count)))) +
+    geom_histogram( color="#e9ecef", alpha=1, position = 'identity',binwidth=1) +
+    scale_fill_manual(values=c('#FD9A41','#61BDCC')) +
+    scale_colour_manual(values = c('#FD9A41','#61BDCC')) +
+    facet_grid(~species)+
+    labs(fill="")+ xlim(c(-20, 20))+
+   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+p
+```
+```{r,fig.height=2.5,fig.width=3}
+VizDimLoadings(DCN.integrated, dims = 1, reduction = "pca",balanced = T,col = c(rep('#ff6347',5),rep('#00688b',5)),nfeatures = 10)
+```
+
+
+
+
+
+What if we use the Seurat label transfer tool, but transfer only class labels from mouse to chicken?
+
+```{r}
+query<-dcn.list[[2]]
+refdata<-dcn.list[[1]]
+anchors <- FindTransferAnchors(reference = refdata, query = query, 
+    dims = 1:30,normalization.method = "LogNormalize",reduction = 'cca')
+predictions <- TransferData(anchorset = anchors, refdata = refdata$classes,weight.reduction = 'pca', 
+    dims = c(1:11),l2.norm = F)
+query <- AddMetaData(query, metadata = predictions)
+
+table(query$predicted.id,query$merged.res.3.m.renamed)
+```
+
+
+```{r,fig.height=1.5,fig.width=6}
+t<-table(query$predicted.id,query$merged.res.3.m.renamed)
+
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+Heatmap(mat,col=col1,cluster_columns = F,cluster_rows = F)
+
+```
+
+
+```{r}
+goodmatches<-subset(query,subset = prediction.score.max > 0.7)
+table(goodmatches$predicted.id,goodmatches$merged.res.3.m.renamed)
+```
+```{r,fig.height=1.5,fig.width=6}
+t<-table(goodmatches$predicted.id,goodmatches$merged.res.3.m.renamed)
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+Heatmap(mat,col=col1,cluster_columns = F,cluster_rows = F)
+
+```
+
+
+Looks pretty good with the exception of Med.A1....... but those are lower scoring hits than for the other cell types...
+
+
+
+
+What if we use the Seurat label transfer tool, but transfer only class labels from mouse to chicken?
+
+```{r}
+query<-dcn.list[[2]]
+refdata<-dcn.list[[1]]
+anchors <- FindTransferAnchors(reference = refdata, query = query, 
+    dims = 1:30,normalization.method = "LogNormalize",reduction = 'pcaproject')
+predictions <- TransferData(anchorset = anchors, refdata = refdata$classes,weight.reduction = 'pca', 
+    dims = c(1:11),l2.norm = F)
+query <- AddMetaData(query, metadata = predictions)
+
+table(query$predicted.id,query$merged.res.3.m.renamed)
+```
+
+
+```{r,fig.height=1.5,fig.width=6}
+t<-table(query$predicted.id,query$merged.res.3.m.renamed)
+
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+Heatmap(mat,col=col1,cluster_columns = F,cluster_rows = F)
+
+```
+
+
+consider the same geneset as used for the correlation analysis now.
+
+
+```{r}
+
+#load differentially expressed genes
+load('~/postdoc2/DCN_sequencing/chicken/plateseq/novaseq44/chickenDEGs_exmvsMouse.RData')
+load('~/postdoc2/DCN_sequencing/chicken/plateseq/novaseq44/mouseDEGs_exmvsMouseinclGly.RData')
+mouseDEGs.filtered<-mouseDEGs[mouseDEGs$p_val_adj<0.01 & mouseDEGs$avg_logFC>log(2),]
+chickenDEGs.filtered<-chickenDEGs[chickenDEGs$p_val_adj<0.01 & chickenDEGs$avg_logFC>log(2),]
+
+interestinggenes<-intersect(unique(mouseDEGs.filtered$gene),unique(chickenDEGs.filtered$gene))
+
+
+
+
+query<-dcn.list[[2]]
+refdata<-dcn.list[[1]]
+anchors <- FindTransferAnchors(reference = refdata, query = query, 
+    dims = 1:30,normalization.method = "LogNormalize",reduction = 'cca',
+    features = interestinggenes)
+predictions <- TransferData(anchorset = anchors, refdata = refdata$classes,weight.reduction = 'pca', 
+    dims = c(1:10),l2.norm = F)
+query <- AddMetaData(query, metadata = predictions)
+
+table(query$predicted.id,query$merged.res.3.m.renamed)
+```
+```{r,fig.height=1.5,fig.width=6}
+t<-table(query$predicted.id,query$merged.res.3.m.renamed)
+
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+Heatmap(mat,col=col1,cluster_columns = F,cluster_rows = F)
+```
+
+
+```{r}
+goodmatches<-subset(query,subset = prediction.score.max > 0.7)
+table(goodmatches$predicted.id,goodmatches$merged.res.3.m.renamed)
+```
+```{r,fig.height=1.5,fig.width=6}
+t<-table(goodmatches$predicted.id,goodmatches$merged.res.3.m.renamed)
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+Heatmap(mat,col=col1,cluster_columns = F,cluster_rows = F)
+```
+
+```{r}
+
+query<-dcn.list[[2]]
+refdata<-dcn.list[[1]]
+anchors <- FindTransferAnchors(reference = refdata, query = query, 
+    dims = 1:30,normalization.method = "LogNormalize",reduction = 'pcaproject',
+    features = interestinggenes)
+predictions <- TransferData(anchorset = anchors, refdata = refdata$classes,weight.reduction = 'pca', 
+    dims = c(1:30),l2.norm = F)
+query <- AddMetaData(query, metadata = predictions)
+
+table(query$predicted.id,query$merged.res.3.m.renamed)
+```
+```{r,fig.height=1.5,fig.width=6}
+t<-table(query$predicted.id,query$merged.res.3.m.renamed)
+
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+Heatmap(mat,col=col1,cluster_columns = F,cluster_rows = F)
+```
+```{r}
+```
+
+
+
+
+
+

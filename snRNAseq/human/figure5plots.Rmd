@@ -1,0 +1,300 @@
+---
+title: "Fig5 plots"
+output: 
+  pdf_document: 
+    keep_tex: yes
+keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(patchwork)
+library(Hmisc)
+library(heatmap3)
+library(qlcMatrix)
+```
+```{r}
+load('~/postdoc2/DCN_sequencing/human/plateseq/novaseq49/inh_clean_3donors_integrated.RData')
+Idents(CN.integrated)<-'merged.res.2.renamed'
+
+inh<-CN.integrated
+
+
+load('~/postdoc2/DCN_sequencing/human/plateseq/novaseq49/ex_3donors_integrated.RData')
+
+#rename clusters
+Idents(CN.integrated)<-'merged.res.2'
+CN.integrated<-RenameIdents(CN.integrated,'ex_2'='Lat.B1','ex_6'='IntA.B1','ex_0'='IntP.B1','ex_5'='IntP.B2','ex_15'='IntP.A1','ex_13'='MedL.A1',
+                            'ex_12'='IntA.A1','ex_1'='Med.A1','ex_14'='Med.B1','ex_9'='IntP.A2','ex_11'='MedL.A2')
+
+CN.integrated$merged.res.2.renamed<-Idents(CN.integrated)
+CN.integrated$merged.res.2.renamed<-factor(CN.integrated$merged.res.2.renamed,levels=levels(CN.integrated$merged.res.2.renamed)[c(8,6,11,7,5,10,9,2,3,4,1)])
+ex<-CN.integrated
+rm(CN.integrated)
+```
+```{r}
+neurons2<-merge(ex,inh)
+DefaultAssay(neurons2)<-'RNA'
+```
+
+
+```{r}
+neurons2 <- FindVariableFeatures(object = neurons2,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+neurons2 <- ScaleData(object = neurons2,vars.to.regress = c('nCount_RNA','donor'))
+
+
+source('~/postdoc2/DCN_sequencing/scRNAseq/plateseq/analysis_afterNova15/crossDCNalignment/pc_modification_functions_S3_forRNA.R')
+
+neurons2<-RunTruncatedPCA(neurons2,n.genes.pc = 60)
+ElbowPlot(object = neurons2)
+```
+
+```{r}
+usefuldims=1:10
+dims.remove=c()
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+```{r, fig.height=5, fig.width=7}
+neurons2<- FindNeighbors(neurons2,dims=usefuldims)
+neurons2 <- FindClusters(object = neurons2, resolution = 1)
+```
+
+
+
+```{r, fig.height=10, fig.width=15, message=FALSE, warnings=FALSE}
+neurons2 <- RunTSNE(object = neurons2, dims = usefuldims, perplexity=30, dim.embed = 2)
+Idents(neurons2)<-'merged.res.2.renamed'
+p1<-DimPlot(object = neurons2, reduction = 'tsne', label=TRUE,pt.size = 1.5)
+p2<-DimPlot(neurons2,group.by = 'donor',pt.size = 1.5)
+p3<-DimPlot(neurons2,group.by = 'DCN',pt.size = 1.5)
+p4<-DimPlot(neurons2,group.by = 'merged.res.2.renamed',pt.size = 1.5,cells.highlight = WhichCells(neurons2,idents = 'i1.1'))
+plot_grid(p1,p2,p3,p4,ncol=2)
+```
+
+```{r,fig.width=8,fig.height=6}
+FeaturePlot(neurons2,c("SNAP25","SLC17A6","GAD1","SLC6A5"),pt.size = 1.5)
+```
+
+
+
+find better colormap.
+```{r,,fig.width=4,fig.height=3}
+library(RColorBrewer)
+library(ggplot2)
+getPalette = colorRampPalette(brewer.pal(9, "YlOrRd"))
+pal1<-getPalette(12)
+getPalette = colorRampPalette(brewer.pal(9, "GnBu"))
+pal2<-getPalette(13)
+RLpalhuman<-c(pal1[c((12-6+1):12)],pal2[seq(5,13,2)])
+
+CNpal=c("#619CFF","#00BA38","grey80","#EC008C")
+
+DimPlot(object = ex, reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'merged.res.2.renamed')+ 
+  scale_color_manual(values=RLpalhuman)
+
+```
+```{r}
+Idents(ex)<-'DCN'
+ex<-RenameIdents(ex,
+                        '1'='Med','2'='Int','6'='Med/Int','3'='Lat','4'='Lat','0'='Lat')
+ex$CN<-Idents(ex)
+```
+```{r,fig.width=15,fig.height=3}
+library(wesanderson)
+
+p1<-DimPlot(object = ex, reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'merged.res.2.renamed')+ scale_color_manual(values=RLpalhuman)
+p2<-DimPlot(object = ex, reduction = 'tsne', label=F,group.by = 'CN',pt.size = 1.5,order=rev(c("Med/Int","Med","Int","Lat")),
+            cols=CNpal[c(3,1,2,4)])
+p3<-DimPlot(object = ex, reduction = 'tsne', label=F,group.by = 'FACS',pt.size=1.5)
+p4<-DimPlot(object = ex, reduction = 'tsne', label=F,group.by = 'donor',pt.size=1.5, order = rev(c('B1','B0','B3')))+
+scale_color_manual(values = wes_palette("FantasticFox1", n = 5)[c(1,3,2)])
+(p1 | p2 | p3 |p4)
+```
+```{r,fig.width=3,fig.height=3}
+P1<-FeaturePlot(ex,"rna_SNAP25",pt.size = 1)+NoLegend()
+P2<-FeaturePlot(ex,"rna_SLC17A6",pt.size = 1)+NoLegend()
+P3<-FeaturePlot(ex,"rna_GAD1",pt.size = 1)+NoLegend()
+P4<-FeaturePlot(ex,"rna_SLC6A5",pt.size = 1)+NoLegend()
+(P1 | P2)/(P3 | P4)
+```
+
+
+
+
+```{r,fig.height=3, fig.width=4}
+
+getPalette = colorRampPalette(brewer.pal(9, "BuGn"))
+pal1<-getPalette(7)
+getPalette = colorRampPalette(brewer.pal(9, "Greys"))
+pal2<-getPalette(1)
+#VZpalhuman<-c('#800080',"#CD3BD1",rev(pal1[c(4,5,6,7)]))
+
+VZpalhuman<-c('#800080',rev(pal1[c(4,5,6,7)]))
+#pal<-pal1[(8-5+1):8]
+VZpalhuman[5]<-'dimgrey'
+
+
+DimPlot(object = inh, reduction = 'tsne', label=F,repel = F,pt.size = 1.5)+ scale_color_manual(values=VZpalhuman)
+```
+```{r}
+Idents(inh)<-'DCN'
+inh<-RenameIdents(inh,
+                        '1'='Med','2'='Int','6'='Med/Int','3'='Lat','4'='Lat','0'='Lat')
+inh$CN<-Idents(inh)
+```
+```{r,fig.width=15,fig.height=3}
+p1<-DimPlot(object = inh, reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'merged.res.2.renamed')+ scale_color_manual(values=VZpalhuman)
+p2<-DimPlot(object = inh, reduction = 'tsne', label=F,group.by = 'CN',pt.size = 1.5,order=rev(c("Med/Int","Med","Int","Lat")),
+            cols=CNpal[c(3,1,2,4)])
+p3<-DimPlot(object = inh, reduction = 'tsne', label=F,group.by = 'FACS',pt.size=1.5)
+p4<-DimPlot(object = inh, reduction = 'tsne', label=F,group.by = 'donor',pt.size=1.5, order = rev(c('B1','B0','B3')))+
+scale_color_manual(values = wes_palette("FantasticFox1", n = 5)[c(1,3,2)])
+
+(p1 | p2 | p3 | p4)
+```
+
+```{r,fig.width=3,fig.height=3}
+FeaturePlot(inh,"rna_SLC6A5",pt.size = 1.5)+NoLegend()
+```
+
+```{r,fig.width=3,fig.height=3}
+FeaturePlot(inh,"rna_GAD1",pt.size = 1.5)+NoLegend()
+```
+```{r,fig.width=3,fig.height=3}
+P1<-FeaturePlot(inh,"rna_SNAP25",pt.size = 1)+NoLegend()
+P2<-FeaturePlot(inh,"rna_SLC17A6",pt.size = 1)+NoLegend()
+P3<-FeaturePlot(inh,"rna_GAD1",pt.size = 1)+NoLegend()
+P4<-FeaturePlot(inh,"rna_SLC6A5",pt.size = 1)+NoLegend()
+(P1 | P2)/(P3 | P4)
+```
+
+```{r}
+save(ex,inh,VZpalhuman,RLpalhuman,CNpal,file='~/postdoc2/DCN_sequencing/human/plateseq/Novaseq49/dataforplotting.RData')
+```
+
+make a dendrogram and correlation matrix for inhibitory cell types
+
+```{r}
+DefaultAssay(inh)<-'RNA'
+Idents(inh)<-'merged.res.2.renamed'
+mouse2<-inh
+#DEGs<-FindAllMarkers(inh,test.use = 'wilcox')
+#save(DEGs,file='~/postdoc2/DCN_sequencing/human/plateseq/Novaseq49/inh_DEGS.RData')
+load('~/postdoc2/DCN_sequencing/human/plateseq/Novaseq49/inh_DEGS.RData')
+mouseDEGs.filtered<-DEGs[DEGs$p_val_adj<0.01 & DEGs$avg_logFC>log(2),]
+mouse2@assays$RNA@var.features<-unique(mouseDEGs.filtered$gene)
+
+interestinggenes<-unique(mouseDEGs.filtered$gene)
+DefaultAssay(mouse2)<-'RNA'
+mouseaverage<-AverageExpression(mouse2,features=interestinggenes,verbose=F,assays='RNA')
+
+mouseaverage<-mouseaverage[[1]]
+
+mouse.norm<-mouseaverage/rowMeans(mouseaverage)
+```
+
+
+```{r}
+library(pvclust)
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+result <- pvclust(as.matrix(mouse.norm), nboot=100,method.hclust = "average",method.dist = function(z){as.dist(1-cor(z,use="pa",method="spearman"))})
+```
+
+```{r}
+dend <- (as.dendrogram(result))
+dend %>% pvclust_show_signif_gradient(result,signif_type = 'au',
+                                      signif_col_fun = colorRampPalette(c('white','black'))) %>%
+  set("nodes_pch", 19) %>%
+  set("branches_lwd", 2) %>%
+   plot(horiz=F)
+result %>% text
+#CN=as.factor(substring(levels(inh$merged.res.2.renamed),1,3))
+#levels(CN)<-c(2,3,1)
+#CN<-factor(CN,levels = c(1,2,3))
+#bars=data.frame(CN=subareapal[1:6]);
+
+#colored_bars(colors = bars, dend = dend, sort_by_labels_order = TRUE,horiz=F)
+
+
+```
+
+
+
+
+
+```{r,fig.width=6,fig.height=4.75}
+
+library(Hmisc)
+res<-rcorr(as.matrix(cbind(mouse.norm)),type="spearman")
+x<-res[[1]]
+
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+
+col1=colorRamp2(c(-1, 0, 1), c("navy", "white", "firebrick3"),space="sRGB")
+
+dend1=dend
+dend2=dend
+
+mat<-x
+#colnames(mat)<-colnames(mouseaverage)
+#rownames(mat)<-colnames(chickenaverage)
+
+
+#column annotation
+ha_bottom<- HeatmapAnnotation(
+  cl=colnames(mat),
+  col=list(cl=setNames(c(VZpalhuman),colnames(mat))),
+
+    simple_anno_size=unit(2,"mm")
+)
+
+#row annotation
+ha_right<- rowAnnotation(
+  cl=rownames(mat),
+  col=list(cl=setNames(VZpalhuman,rownames(mat))),
+  simple_anno_size=unit(2,"mm")
+)
+
+Heatmap(mat,
+        name='correlation',
+        col=col1,
+        bottom_annotation = ha_bottom,
+        right_annotation = ha_right,
+#        clustering_distance_rows  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        clustering_distance_columns  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        row_dend_reorder =FALSE, column_dend_reorder = F,
+        cluster_rows = (dend1),cluster_columns = (dend2),
+        row_dend_width = unit(25, "mm"),
+        column_dend_height = unit(25,"mm"),
+        row_split=3,column_split = 3,
+        border=T)#,
+#            if(sig[i,j]>0)
+#            grid.points(x, y,pch=16,size = unit(2, "mm"))
+#          }
+#)
+```
+
+
+
+
+
+
+
+
+
+
+

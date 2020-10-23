@@ -1,0 +1,367 @@
+---
+title: "ex correlation plots post N49"
+output: 
+  pdf_document: 
+    keep_tex: yes
+keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Tosches style correlational analysis of mouse and human cell types. using integrated data from B0, B1 and B3 for human.
+
+```{r}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(patchwork)
+library(Hmisc)
+library(heatmap3)
+library(qlcMatrix)
+```
+
+Lets try using S3 for cross species alignment of all inhibitory neurons.
+
+load neurons from N49
+```{r}
+load('~/postdoc2/DCN_sequencing/human/plateseq/novaseq49/ex_3donors_integrated.RData')
+
+#rename clusters
+Idents(CN.integrated)<-'merged.res.2'
+CN.integrated<-RenameIdents(CN.integrated,'ex_2'='Lat.B1','ex_6'='IntA.B1','ex_0'='IntP.B1','ex_5'='IntP.B2','ex_15'='IntP.A1','ex_13'='MedL.A1',
+                            'ex_12'='IntA.A1','ex_1'='Med.A1','ex_14'='Med.B1','ex_9'='IntP.A2','ex_11'='MedL.A2')
+
+CN.integrated$merged.res.2.renamed<-Idents(CN.integrated)
+CN.integrated$merged.res.2.renamed<-factor(CN.integrated$merged.res.2.renamed,levels=levels(CN.integrated$merged.res.2.renamed)[c(8,6,11,7,5,10,9,2,3,4,1)])
+```
+```{r}
+all<-CN.integrated
+```
+
+
+
+
+```{r}
+human.data<-all@assays$RNA@counts
+human<-all
+```
+
+
+revert gene names to  ENSG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/human/EnsemblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-human.data[rownames(human.data) %in% conversiontable.notrepeated[,2],]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+
+
+counts_nottranslated<-human.data[!rownames(human.data) %in% conversiontable.notrepeated[,2],]
+
+human.data2<-rbind(counts_translated,counts_nottranslated)
+
+```
+
+
+
+
+
+
+load mouse data, keeping all clusters 
+```{r}
+load(file = '~/postdoc2/DCN_sequencing/scRNAseq/plateseq/Novaseq31/dataforplotting.RData')
+Idents(merged)<-'final.clusters2'
+mouse<-RL
+
+rm(merged)
+mouse.data<-mouse@assays$RNA@counts
+```
+
+revert gene names to  ENSG genes 
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/scRNAseq/plateseq/EnseblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-mouse.data[rownames(mouse.data) %in% conversiontable.notrepeated[,2],]
+
+
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.stable.ID[match(rownames(counts_translated),conversiontable.notrepeated$Gene.name)])
+
+
+counts_nottranslated<-mouse.data[!rownames(mouse.data) %in% conversiontable.notrepeated[,2],]
+
+mouse.data2<-rbind(counts_translated,counts_nottranslated)
+
+```
+
+
+
+read in ortholog relationships obtained from ensemble biomart
+
+```{r}
+orth.table<-read.csv(file='~/postdoc2/DCN_sequencing/human/plateseq/human_mouse_orthologs.txt',header=T)
+#throw out anything that isnt onetoone
+orth.table<-orth.table[orth.table[,"Mouse.homology.type"]=="ortholog_one2one",]
+#drop extra columns
+orth.table.clean<-unique(orth.table[,c("Gene.stable.ID",'Mouse.gene.stable.ID','Mouse.gene.name')])
+```
+
+
+throw out what isn't in a 1:1 ortholog
+```{r}
+human.data.filtered<-human.data2[rownames(human.data2) %in% as.character(orth.table.clean$Gene.stable.ID),]
+rownames(human.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(human.data.filtered),orth.table.clean$Gene.stable.ID)])
+
+mouse.data.filtered<-mouse.data2[rownames(mouse.data2) %in% as.character(orth.table.clean$Mouse.gene.stable.ID),]
+rownames(mouse.data.filtered)<-as.character(orth.table.clean$Mouse.gene.stable.ID[match(rownames(mouse.data.filtered),orth.table.clean$Mouse.gene.stable.ID)])
+```
+
+why are there still different numbers of genes?
+```{r}
+human.data.filtered2<-human.data.filtered[rownames(human.data.filtered) %in% rownames(mouse.data.filtered),]
+mouse.data.filtered2<-mouse.data.filtered[rownames(mouse.data.filtered) %in% rownames(human.data.filtered2),]
+
+```
+
+now convert them all back to mouse names for simplicity.
+
+replace known ENSMUSG genes with their names, keep the remainder
+```{r}
+#load conversion table
+conversiontable=read.csv("C:/Users/justus/Documents/postdoc2/DCN_sequencing/scRNAseq/plateseq/EnseblID_to_GeneSymbol.txt")
+conversiontable.df<-as.data.frame(conversiontable)
+
+conversiontable.notrepeated<-conversiontable[!(duplicated(conversiontable[,2])|duplicated(conversiontable[,2], fromLast=TRUE)),]
+rownames(conversiontable.notrepeated)<-conversiontable.notrepeated[,1]
+
+
+counts_translated<-human.data.filtered2[rownames(human.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-human.data.filtered2[!rownames(human.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+human.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+
+
+counts_translated<-mouse.data.filtered2[rownames(mouse.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+rownames(counts_translated)<-as.character(conversiontable.notrepeated$Gene.name[match(rownames(counts_translated),conversiontable.notrepeated$Gene.stable.ID)])
+counts_nottranslated<-mouse.data.filtered2[!rownames(mouse.data.filtered2) %in% rownames(conversiontable.notrepeated),]
+mouse.data.filtered3<-rbind(counts_translated,counts_nottranslated)
+
+
+
+```
+
+Set up seurat objects. Let's for now, not filter any genes...
+
+```{r}
+mouse2<-CreateSeuratObject(mouse.data.filtered3)
+mouse2@meta.data<-mouse@meta.data
+mouse2$species<-'mouse'
+Idents(mouse2)<-'final.clusters2'
+human2<-CreateSeuratObject(human.data.filtered3)
+human2@meta.data<-human@meta.data
+human2$species<-'human'
+Idents(human2)<-'merged.res.2.renamed'
+
+mouse2<- NormalizeData(object = mouse2, verbose = FALSE,scale.factor = 1e6)
+human2<- NormalizeData(object = human2, verbose = FALSE,scale.factor = 1e6)
+
+
+library(future)
+plan(strategy = "multicore", workers = 4)
+
+#humanDEGs<-FindAllMarkers(human2,test.use = 'wilcox')
+#save(humanDEGs,file='~/postdoc2/DCN_sequencing/human/plateseq/novaseq49/humanDEGs_exB0B1B3vsMouse.RData')
+
+#mouseDEGs<-FindAllMarkers(mouse2,test.use = 'wilcox')
+#save(mouseDEGs,file='mouseDEGs_exB1vsMouse_noMed.RData')
+
+
+
+load('~/postdoc2/DCN_sequencing/human/plateseq/novaseq49/humanDEGs_exB0B1B3vsMouse.RData')
+load('~/postdoc2/DCN_sequencing/human/plateseq/novaseq46/mouseDEGs_exB1vsMouse.RData')
+```
+
+
+
+```{r}
+mouseDEGs.filtered<-mouseDEGs[mouseDEGs$p_val_adj<0.01 & mouseDEGs$avg_logFC>log(2),]
+humanDEGs.filtered<-humanDEGs[humanDEGs$p_val_adj<0.01 & humanDEGs$avg_logFC>log(2),]
+mouse2@assays$RNA@var.features<-unique(mouseDEGs.filtered$gene)
+human2@assays$RNA@var.features<-unique(humanDEGs.filtered$gene)
+```
+
+
+Calculate cluster averages.
+```{r}
+interestinggenes<-intersect(unique(mouseDEGs.filtered$gene),unique(humanDEGs.filtered$gene))
+mouseaverage<-AverageExpression(mouse2,features=interestinggenes,verbose=F)
+humanaverage<-AverageExpression(human2,features=interestinggenes,verbose = F)
+```
+normalize as done by tosches et al.
+```{r}
+mouseaverage<-mouseaverage[[1]]
+humanaverage<-humanaverage[[1]]
+```
+```{r}
+mouse.norm<-mouseaverage/rowMeans(mouseaverage)
+human.norm<-humanaverage/rowMeans(humanaverage)
+colnames(mouse.norm)<-paste0('mouse_',colnames(mouse.norm))
+colnames(human.norm)<-paste0('human_',colnames(human.norm))
+```
+
+
+calculate pvalues like tosches did. shuffle gene expression values across cell types.
+
+```{r}
+repeats=10000
+cuts=20000
+
+p<-replicate(repeats,{
+  htest<-t(apply(human.norm,1,sample))
+  colnames(htest)<-colnames(human.norm)
+  mtest<-t(apply(mouse.norm,1,sample))
+  colnames(mtest)<-colnames(mouse.norm)
+  res<-rcorr(as.matrix(cbind(mtest,htest)),type="spearman")
+  x<-res[[1]]
+  x<-as.vector(x[grep('human',rownames(x)),grep('mouse',colnames(x))])
+  })
+
+h<-hist(as.vector(p),breaks=seq(-1,1,2/cuts),freq=F,)
+
+h2<-h$counts/sum(h$counts)
+c<-cumsum(h2)
+plot(c)
+
+library(Hmisc)
+res<-rcorr(as.matrix(cbind(mouse.norm,human.norm)),type="spearman")
+x<-res[[1]]
+x<-x[grep('human',rownames(x)),grep('mouse',colnames(x))]
+pval<-c[round((x+1)*cuts/2)]
+pval2<-matrix(as.vector(pval),nrow=dim(x)[1],ncol=dim(x)[2],byrow = F)
+rownames(pval2)<-rownames(x)
+colnames(pval2)<-colnames(x)
+```
+
+
+
+```{r,fig.width=10,fig.height=7}
+library(heatmap3)
+alpha=0.05
+#with bonferroni correction and two sided ness
+#sig<-pval2<alpha/2/(dim(pval2)[1]*dim(pval2)[2]) | pval2> 1-(alpha/2/(dim(pval2)[1]*dim(pval2)[2]))
+#whitout twosidedness
+#sig<-pval2<alpha/(dim(pval2)[1]*dim(pval2)[2]) | pval2> 1-(alpha/(dim(pval2)[1]*dim(pval2)[2]))
+
+#without
+sig<-pval2<alpha | pval2> 1-alpha
+
+
+highlight<-as.data.frame(which(sig,arr.ind=T)) #can we also highlight highest correlation by say a star? would be informative i think.
+highlight$color<-'black'
+
+J<-rowMax(Matrix(x,sparse = T),which = TRUE)
+```
+
+```{r,,fig.width=4,fig.height=3}
+library(RColorBrewer)
+library(ggplot2)
+getPalette = colorRampPalette(brewer.pal(9, "YlOrRd"))
+pal1<-getPalette(12)
+getPalette = colorRampPalette(brewer.pal(9, "GnBu"))
+pal2<-getPalette(13)
+RLpalhuman<-c(pal1[c((12-6+1):12)],pal2[seq(5,13,2)])
+```
+
+```{r,fig.width=6.5,fig.height=4.5}
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+
+col1=colorRamp2(c(-0.5, 0, 0.5), c("navy", "white", "firebrick3"),space="sRGB")
+
+rownames(x)<-colnames(humanaverage)
+colnames(x)<-colnames(mouseaverage)
+
+dendR=rev(dendsort(as.dendrogram(hclust(as.dist(1-cor(t(x),use="pa")),method = "complete"))))
+dendC=rev(dendsort(as.dendrogram(hclust(as.dist(1-cor((x),use="pa")),method = "complete"))))
+
+mat<-x
+
+#column annotation
+ha_bottom<- HeatmapAnnotation(
+  cl=colnames(mat),
+  col=list(cl=setNames(c(RLpal),colnames(mat))),
+
+    simple_anno_size=unit(2,"mm")
+)
+
+#row annotation
+ha_right<- rowAnnotation(
+  cl=rownames(mat),
+  col=list(cl=setNames(RLpalhuman,rownames(mat))),
+  simple_anno_size=unit(2,"mm")
+)
+
+
+Heatmap(mat,
+        name='correlation',
+        col=col1,
+       bottom_annotation = ha_bottom,
+         right_annotation = ha_right,
+#        clustering_distance_rows  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        clustering_distance_columns  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        row_dend_reorder =FALSE, column_dend_reorder = F,
+        cluster_rows = rev(dendR),cluster_columns = (dendC),
+        row_dend_width = unit(20, "mm"),
+        column_dend_height = unit(20,"mm"),
+        row_split=2,column_split = 2,
+        border=T,
+        cell_fun = function(j, i, x, y, width, height, fill) {
+            if(sig[i,j]>0)
+            grid.points(x, y,pch=16,size = unit(2, "mm"))
+          }
+)
+```
+
+Let's do some label transfer.
+```{r}
+query<-human2
+refdata<-mouse2
+anchors <- FindTransferAnchors(reference = refdata, query = query, 
+    dims = 1:30,normalization.method = "LogNormalize",reduction = 'cca')
+predictions <- TransferData(anchorset = anchors, refdata = refdata$classes,weight.reduction = 'cca', 
+    dims = c(1:30),l2.norm = F)
+query <- AddMetaData(query, metadata = predictions)
+
+table(query$predicted.id,query$merged.res.2.renamed)
+```
+
+
+```{r,fig.height=1.5,fig.width=6}
+t<-table(query$predicted.id,query$merged.res.2.renamed)
+
+t2<-prop.table(t,2)
+mat<-matrix(as.numeric(data.matrix(t2)),nrow = dim(t2)[1],ncol=dim(t2)[2],dimnames = list(rownames(t2),colnames(t2)))
+col1=colorRamp2(c(0,0.5, 1), c("navy", "white", "firebrick3"),space="sRGB")
+Heatmap(mat,col=col1,cluster_columns = F,cluster_rows = F)
+
+```
+
+
+
+

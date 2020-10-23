@@ -1,0 +1,550 @@
+---
+title: "Fig1 plots"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    keep_tex: yes
+keep_md: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Make plots used in Fig.1 and Fig. 2 and associated supplemental figures to illustrate snRNAseq data. 
+
+```{r}
+library(Seurat)
+library(ComplexHeatmap)
+library(patchwork)
+library(ggplot2)
+library(RColorBrewer)
+library(pvclust)
+library(dendextend)
+```
+
+Load data after uncompressig split zip file in snRNAseq/mouse/data/dataforplotting_split_zip containing dataforplotting, for example with winzip.
+```{r}
+setwd('~/postdoc2/Gedankenpapers/CNevomanuscript/code/snRNAseq/mouse/Fig1/') #set working directory to mouse folder
+load('../data/dataforplotting.RData') #point to whereever you uncompressed this file to.
+VZpal=c("#800080","#0B7734","#37A265","#66C2A4","#696969")
+```
+
+```{r}
+#rename into bland fig.1 clusternames
+merged$final.clusters0<-merged$final.clusters2
+levels(merged$final.clusters0)<-c(paste0('Ex',1:8),'Ex9*',paste0('Ex',10:15),paste0('Inh',1:5))
+
+RL$final.clusters0<-RL$final.clusters2
+levels(RL$final.clusters0)<-c(paste0('Ex',1:8),'Ex9*',paste0('Ex',10:15))
+
+VZ$final.clusters0<-VZ$final.clusters2
+levels(VZ$final.clusters0)<-c(paste0('Inh',1:5))
+Idents(VZ)<-'final.clusters0'
+VZ<-RenameIdents(VZ,'Inh1'='Inh1','Inh2'='Inh2.1','Inh3'='Inh2.2','Inh4'="Inh2.3","Inh5"="Inh3")
+VZ$final.clusters3<-Idents(VZ)
+Idents(VZ)<-'final.clusters3'
+```
+
+```{r,fig.width=8,fig.height=6}
+p1<-DimPlot(object = merged, reduction = 'tsne', label=F,repel = F,pt.size = 2,group.by = 'final.clusters0')+ scale_color_manual(values=c(RLpal,VZpal))
+p1
+```
+
+
+
+```{r,fig.width=15,fig.height=4}
+p1<-DimPlot(object = RL, reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'final.clusters0')+ scale_color_manual(values=RLpal)
+p2<-DimPlot(object = RL, reduction = 'tsne', label=F,group.by = 'DCN',pt.size = 1.5)
+p3<-DimPlot(object = RL, reduction = 'tsne', label=F,group.by = 'FACS',pt.size=1.5)
+(p1 | p2 | p3)
+```
+
+```{r,fig.width=15,fig.height=4}
+p1<-DimPlot(object = VZ, reduction = 'tsne', label=F,repel = F,pt.size = 1.5,group.by = 'final.clusters3')+ scale_color_manual(values=VZpal)
+p2<-DimPlot(object = VZ, reduction = 'tsne', label=F,group.by = 'DCN',pt.size = 1.5)
+p3<-DimPlot(object = VZ, reduction = 'tsne', label=F,group.by = 'FACS',pt.size=1.5)
+(p1 | p2 | p3)
+```
+
+```{r,fig.width=5,fig.height=4}
+FeaturePlot(VZ,c("Snap25","Slc17a6","Gad1","Slc6a5"),pt.size=1)
+```
+```{r,fig.width=5,fig.height=4}
+FeaturePlot(RL,c("Snap25","Slc17a6","Gad1","Slc6a5"),pt.size=1,reduction = 'tsne')
+```
+
+```{r}
+Idents(RL)<-'classes'
+A<-subset(RL,idents="ClassA")
+B<-subset(RL,idents="ClassB")
+
+library(dplyr)
+Idents(A)<-'final.clusters2'
+Amarkers<-FindAllMarkers(A,logfc.threshold = 1,min.diff.pct = 0.35,min.pct = 0.4)
+Amarkers %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC)->Amarkergenes
+
+Idents(B)<-'final.clusters2'
+Bmarkers<-FindAllMarkers(B,logfc.threshold = 1,min.diff.pct = 0.3,min.pct = 0.4)
+Bmarkers %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC)->Bmarkergenes
+Bmarkergenes2<-Bmarkergenes$gene
+Bmarkergenes2[2]<-'Syndig1'
+
+VZmarkers<-FindAllMarkers(VZ,logfc.threshold = 1,min.diff.pct = 0.3,min.pct = 0.4)
+VZmarkers %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC)->VZmarkergenes
+
+```
+
+```{r,fig.width=8,fig.height=6}
+Idents(merged)<-'final.clusters0'
+DotPlot(merged,features=c("Snap25","Rbfox3","Slc17a6","Gad1","Slc6a5","Slc6a1","Fnbp1l","Sv2c","Acan",Amarkergenes$gene,Bmarkergenes2,VZmarkergenes$gene))+RotatedAxis()+coord_flip()
+```
+
+```{r,fig.width=12,fig.height=6}
+VlnPlot(merged,c("nFeature_RNA","nCount_RNA"),pt.size=0,ncol=1,cols=c(RLpal,VZpal))
+```
+
+
+
+
+
+
+
+
+make stacked bargraphs of dissection labels per cluster, adding in error bars across FACS rounds.
+
+```{r,fig.width=15,fig.height=5}
+library(dplyr)
+
+
+
+data<-data.frame("DCN"=as.factor(RL$DCN),"FACS"=as.factor(RL$FACS),"CL"=as.factor(RL$final.clusters0))
+data %>% group_by(DCN,FACS) %>% dplyr::summarise(DCNcount=n())->tmp1
+data %>% group_by(DCN,CL) %>% dplyr::summarize(DCNcountperCL=n()) ->tmp4
+data %>% group_by(DCN,FACS,CL, .drop = FALSE) %>% dplyr::summarise(DCNcountperFACSCL=n())->tmp2
+data %>% group_by(FACS,CL, .drop = FALSE) %>% dplyr::summarise(cellsperclusterinthisround=n())->tmp3
+
+
+full_join(tmp2,tmp3)%>% mutate(ratio=DCNcountperFACSCL/cellsperclusterinthisround)->tmp5
+
+library(tidyr)
+tmp5 %>% group_by(CL,DCN,.drop = FALSE) %>% dplyr::summarise(mean=mean(ratio,na.rm=TRUE),sd=sd(ratio,na.rm=TRUE)) ->tmp6
+
+tmp6$sd <- tmp6$sd %>% replace_na(0)
+
+
+#ggplot(tmp6,aes(x=CL, y=mean,fill=DCN))+
+#  geom_bar(position="stack",stat="identity")
+
+
+
+
+tmp6 %>% mutate(ci_l=mean-sd/sqrt(6),ci_u=mean+sd/sqrt(6))->DF
+tmp6 %>% mutate(ci_l=mean-sd,ci_u=mean+sd)->DF
+
+
+ggplot(DF, aes(x=CL, y=mean,fill=DCN)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin= ci_l, 
+                    ymax= ci_u),
+                width=.2,                    # Width of the error bars
+                position=position_dodge(.9))
+
+```
+
+
+
+
+
+```{r,fig.width=5,fig.height=5}
+library(dplyr)
+
+
+
+data<-data.frame("DCN"=as.factor(VZ$DCN),"FACS"=as.factor(VZ$FACS),"CL"=as.factor(VZ$final.clusters0))
+data %>% group_by(DCN,FACS) %>% dplyr::summarise(DCNcount=n())->tmp1
+data %>% group_by(DCN,CL) %>% dplyr::summarize(DCNcountperCL=n()) ->tmp4
+data %>% group_by(DCN,FACS,CL, .drop = FALSE) %>% dplyr::summarise(DCNcountperFACSCL=n())->tmp2
+data %>% group_by(FACS,CL, .drop = FALSE) %>% dplyr::summarise(cellsperclusterinthisround=n())->tmp3
+
+
+full_join(tmp2,tmp3)%>% mutate(ratio=DCNcountperFACSCL/cellsperclusterinthisround)->tmp5
+
+library(tidyr)
+tmp5 %>% group_by(CL,DCN) %>% dplyr::summarise(mean=mean(ratio,na.rm=TRUE),sd=sd(ratio,na.rm=TRUE)) ->tmp6
+
+tmp6$sd <- tmp6$sd %>% replace_na(0)
+
+
+#ggplot(tmp6,aes(x=CL, y=mean,fill=DCN))+
+#  geom_bar(position="stack",stat="identity")
+
+
+
+
+tmp6 %>% mutate(ci_l=mean-sd/sqrt(6),ci_u=mean+sd/sqrt(6))->DF
+tmp6 %>% mutate(ci_l=mean-sd,ci_u=mean+sd)->DF
+
+
+ggplot(DF, aes(x=CL, y=mean,fill=DCN)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin= ci_l, 
+                    ymax= ci_u),
+                width=.2,                    # Width of the error bars
+                position=position_dodge(.9))
+
+```
+
+make a dendrogram of excitatory mouse cell clusters
+
+first get DEGs and normalize them
+```{r}
+Idents(RL)<-'final.clusters0'
+mouse2<-RL
+load('mouseDEGs_allgenes_gly4.RData')
+mouseDEGs.filtered<-mouseDEGs[mouseDEGs$p_val_adj<0.01 & mouseDEGs$avg_logFC>log(2),]
+mouse2@assays$RNA@var.features<-unique(mouseDEGs.filtered$gene)
+
+interestinggenes<-unique(mouseDEGs.filtered$gene)
+mouseaverage<-AverageExpression(mouse2,features=interestinggenes,verbose=F)
+
+mouseaverage<-mouseaverage[[1]]
+
+mouse.norm<-mouseaverage/rowMeans(mouseaverage)
+```
+
+now make dendrogram with multilevel bootstrapping
+```{r}
+library(pvclust)
+result <- pvclust(as.matrix(mouse.norm), nboot=10000,method.hclust = "average",method.dist = function(z){as.dist(1-cor(z,use="pa",method="spearman"))},parallel = T)
+```
+
+```{r}
+dend <- (as.dendrogram(result))
+dend %>% pvclust_show_signif_gradient(result,signif_type = 'au',
+                                      signif_col_fun = colorRampPalette(c('white','black'))) %>%
+  set("nodes_pch", 19) %>%
+  set("branches_lwd", 2) %>%
+   plot()
+result %>% text
+CN=as.factor(substring(levels(RL$final.clusters2),1,3))
+levels(CN)<-c(2,3,1)
+CN<-factor(CN,levels = c(1,2,3))
+bars=data.frame(CL=RLpal,CN=CNpal[(CN)]);
+
+colored_bars(colors = bars, dend = dend, sort_by_labels_order = TRUE)
+
+
+```
+
+
+
+plot correlation matrix.
+
+```{r}
+Idents(RL)<-'final.clusters2'
+mouse2<-RL
+load('~/postdoc2/DCN_sequencing/scRNAseq/plateseq/Novaseq31/mouseDEGs_allgenes_gly4.RData')
+mouseDEGs.filtered<-mouseDEGs[mouseDEGs$p_val_adj<0.01 & mouseDEGs$avg_logFC>log(2),]
+mouse2@assays$RNA@var.features<-unique(mouseDEGs.filtered$gene)
+
+interestinggenes<-unique(mouseDEGs.filtered$gene)
+mouseaverage<-AverageExpression(mouse2,features=interestinggenes,verbose=F)
+
+mouseaverage<-mouseaverage[[1]]
+
+mouse.norm<-mouseaverage/rowMeans(mouseaverage)
+
+library(Hmisc)
+res<-rcorr(as.matrix(mouse.norm),type="spearman")
+x<-res[[1]]
+```
+
+extract ggplot2 default colors for CN.
+```{r}
+library(ggplot2)
+library(scales)
+                                       # Amount of default colors
+CNpal <- hue_pal()(3)                             # Identify hex codes
+
+```
+
+
+```{r,fig.width=7.5,fig.height=5.5}
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+
+col1=colorRamp2(c(-1, 0, 1), c("navy", "white", "firebrick3"),space="sRGB")
+
+
+
+#column annotation
+ha_bottom<- HeatmapAnnotation(
+#  CN=substring(colnames(x),1,3),
+  Sub=substring(colnames(x),1,4),
+  cl=rownames(x),
+  col=list(
+#           CN=c('Med'=CNpal[1],'Int'=CNpal[2],'Lat'=CNpal[3]),
+           Sub=setNames(subareapal[c(1,2,4:6,3)],unique(substring(colnames(x),1,4))),
+           cl=setNames(RLpal,rownames(x))),
+  simple_anno_size=unit(3,"mm")
+)
+
+#row annotation
+ha_right<- rowAnnotation(
+#  CN=substring(colnames(x),1,3),
+  Sub=substring(colnames(x),1,4),
+  cl=rownames(x),
+  col=list(
+#           CN=c('Med'=CNpal[1],'Int'=CNpal[2],'Lat'=CNpal[3]),
+           Sub=setNames(subareapal[c(1,2,4:6,3)],unique(substring(colnames(x),1,4))),
+           cl=setNames(RLpal,rownames(x))),
+  simple_anno_size=unit(3,"mm")
+)
+
+mat<-x
+Heatmap(mat,
+        name='correlation',
+        col=col1,
+        bottom_annotation = ha_bottom,
+        right_annotation = ha_right,
+#        clustering_distance_rows  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        clustering_distance_columns  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        row_dend_reorder =FALSE, column_dend_reorder = F,
+        cluster_rows = rev(dend),cluster_columns = rev(dend),
+        row_dend_width = unit(20, "mm"),
+        column_dend_height = unit(20,"mm"),
+        row_split=2,column_split = 2,
+        border=T#,
+ #       cell_fun = function(j, i, x, y, width, height, fill) {
+ #           if(sig[i,j]>0)
+ #           grid.points(x, y,pch=16,size = unit(2, "mm"))
+ #         }
+)
+```
+
+
+```{r,fig.width=15,fig.height=5}
+p1<-DimPlot(RL,reduction='tsne',group.by = 'subareas',pt.size = 1.5)+scale_fill_manual(subareapal)
+p2<-DimPlot(RL,reduction='tsne',group.by = 'final.clusters2',pt.size = 1.5)+scale_fill_manual(RLpal)
+RL<-FindClusters(RL,resolution = 1)
+p3<-DimPlot(RL,reduction='tsne',pt.size = 1.5)
+(p1 | p3 | p2)
+```
+
+
+make a dendrogram for CN subareas. 
+
+
+```{r}
+Idents(RL)<-'subareas'
+mouse2<-RL
+load('RL_subareaDEGs.RData')
+mouseDEGs.filtered<-DEGs[DEGs$p_val_adj<0.01 & DEGs$avg_logFC>log(2),]
+mouse2@assays$RNA@var.features<-unique(mouseDEGs.filtered$gene)
+
+interestinggenes<-unique(mouseDEGs.filtered$gene)
+mouseaverage<-AverageExpression(mouse2,features=interestinggenes,verbose=F)
+
+mouseaverage<-mouseaverage[[1]]
+
+mouse.norm<-mouseaverage/rowMeans(mouseaverage)
+```
+
+
+```{r}
+library(pvclust)
+result <- pvclust(as.matrix(mouse.norm), nboot=10000,method.hclust = "average",method.dist = function(z){as.dist(1-cor(z,use="pa",method="spearman"))})
+```
+
+```{r}
+dend <- (as.dendrogram(result))
+dend %>% pvclust_show_signif_gradient(result,signif_type = 'au',
+                                      signif_col_fun = colorRampPalette(c('white','black'))) %>%
+  set("nodes_pch", 19) %>%
+  set("branches_lwd", 2) %>%
+   plot(horiz=F)
+result %>% text
+CN=as.factor(substring(levels(RL$final.clusters2),1,3))
+levels(CN)<-c(2,3,1)
+CN<-factor(CN,levels = c(1,2,3))
+bars=data.frame(CN=subareapal[1:6]);
+
+colored_bars(colors = bars, dend = dend, sort_by_labels_order = TRUE,horiz=F)
+
+
+```
+
+```{r,fig.width=3,fig.height=6}
+dend <- (as.dendrogram(result))
+dend %>% pvclust_show_signif_gradient(result,signif_type = 'au',
+                                      signif_col_fun = colorRampPalette(c('white','black'))) %>%
+  set("nodes_pch", 19) %>%
+  set("branches_lwd", 2) %>%
+   plot(horiz=T)
+result %>% text
+CN=as.factor(substring(levels(RL$final.clusters2),1,3))
+levels(CN)<-c(2,3,1)
+CN<-factor(CN,levels = c(1,2,3))
+bars=data.frame(CN=subareapal[1:6]);
+
+colored_bars(colors = bars, dend = dend, sort_by_labels_order = TRUE,horiz=T)
+
+```
+
+
+
+Now find some marker genes that are specific to subareas.
+
+```{r}
+RL$subareas2<-factor(RL$subareas,levels=c('Med','MedL','MedDL','IntP','IntA','Lat'))
+Idents(RL)<-'subareas2'
+RL<-RenameIdents(RL,'MedDL'='MedL')
+RL$subareas3<-Idents(RL)
+RL$subareas3<-factor(RL$subareas3,levels=c('Med','MedL','IntP','IntA','Lat'))
+Idents(RL)<-'subareas3'
+#subareamarkers<-FindAllMarkers(RL,logfc.threshold = 1,min.diff.pct = 0.2)
+#subareamarkers %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC)->subareamarkergenes
+#Latmarkers<-FindMarkers(RL,ident.1 = 'Lat',min.diff.pct = 0.25,only.pos = T)
+#Latmarkers 
+```
+```{r}
+#Latmarkers<-FindMarkers(RL,ident.1 = 'Lat',ident.2='IntA',min.diff.pct = 0.25,only.pos = T)
+#Latmarkers 
+```
+
+```{r}
+#IntAmarkers<-FindMarkers(RL,ident.1 = 'IntA',min.diff.pct = 0.3,only.pos = T)
+#IntAmarkers 
+```
+
+
+```{r}
+#MedLmarkers<-FindMarkers(RL,ident.1 = 'MedL',min.diff.pct = 0.3,only.pos = T)
+#MedLmarkers 
+```
+
+
+
+```{r}
+DotPlot(RL,features=rev(c('Foxp2','Penk','Lmx1a','Trdn','Prr16','Ankfn1','Prox1',"Cd24a","Cpne4","Map7")),split.by = 'classes',cols = c('blue','blue'))+RotatedAxis()
+```
+
+
+
+
+
+
+make a dendrogram and correlation matrix for inhibitory cell types
+
+```{r}
+Idents(VZ)<-'final.clusters3'
+mouse2<-VZ
+#DEGs<-FindAllMarkers(VZ,test.use = 'wilcox')
+#save(DEGs,file='VZ_DEGS.RData')
+load('../data/VZ_DEGS.RData')
+mouseDEGs.filtered<-DEGs[DEGs$p_val_adj<0.01 & DEGs$avg_logFC>log(2),]
+mouse2@assays$RNA@var.features<-unique(mouseDEGs.filtered$gene)
+
+interestinggenes<-unique(mouseDEGs.filtered$gene)
+mouseaverage<-AverageExpression(mouse2,features=interestinggenes,verbose=F)
+
+mouseaverage<-mouseaverage[[1]]
+
+mouse.norm<-mouseaverage/rowMeans(mouseaverage)
+```
+
+
+```{r}
+library(pvclust)
+result <- pvclust(as.matrix(mouse.norm), nboot=10000,method.hclust = "average",method.dist = function(z){as.dist(1-cor(z,use="pa",method="spearman"))},parallel = T)
+```
+
+```{r}
+dend <- (as.dendrogram(result))
+dend %>% pvclust_show_signif_gradient(result,signif_type = 'au',
+                                      signif_col_fun = colorRampPalette(c('white','black'))) %>%
+  set("nodes_pch", 19) %>%
+  set("branches_lwd", 2) %>%
+   plot(horiz=F)
+result %>% text
+CN=as.factor(substring(levels(RL$final.clusters2),1,3))
+levels(CN)<-c(2,3,1)
+CN<-factor(CN,levels = c(1,2,3))
+bars=data.frame(CN=subareapal[1:6]);
+
+#colored_bars(colors = bars, dend = dend, sort_by_labels_order = TRUE,horiz=F)
+
+
+```
+
+
+
+
+
+```{r,fig.width=6,fig.height=4.75}
+
+library(Hmisc)
+res<-rcorr(as.matrix(cbind(mouse.norm)),type="spearman")
+x<-res[[1]]
+
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+
+col1=colorRamp2(c(-1, 0, 1), c("navy", "white", "firebrick3"),space="sRGB")
+
+dend1=dend
+dend2=dend
+
+mat<-x
+#colnames(mat)<-colnames(mouseaverage)
+#rownames(mat)<-colnames(chickenaverage)
+
+
+#column annotation
+ha_bottom<- HeatmapAnnotation(
+  cl=colnames(mat),
+  col=list(cl=setNames(c(VZpal),colnames(mat))),
+
+    simple_anno_size=unit(2,"mm")
+)
+
+#row annotation
+ha_right<- rowAnnotation(
+  cl=rownames(mat),
+  col=list(cl=setNames(VZpal,rownames(mat))),
+  simple_anno_size=unit(2,"mm")
+)
+
+Heatmap(mat,
+        name='correlation',
+        col=col1,
+        bottom_annotation = ha_bottom,
+        right_annotation = ha_right,
+#        clustering_distance_rows  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        clustering_distance_columns  = function(x) as.dist(1 - cor(t(x), use = "pa")),
+#        row_dend_reorder =FALSE, column_dend_reorder = F,
+        cluster_rows = (dend1),cluster_columns = (dend2),
+        row_dend_width = unit(25, "mm"),
+        column_dend_height = unit(25,"mm"),
+        row_split=3,column_split = 3,
+        border=T)#,
+#            if(sig[i,j]>0)
+#            grid.points(x, y,pch=16,size = unit(2, "mm"))
+#          }
+#)
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+

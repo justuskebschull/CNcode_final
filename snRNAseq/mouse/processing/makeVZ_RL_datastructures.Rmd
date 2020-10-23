@@ -1,0 +1,268 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+ 
+```{r}
+library(Seurat)
+library(dplyr)
+library(Matrix)
+library(cowplot)
+library(scrattch.hicat)
+library(patchwork)
+```
+
+
+*NB. run in Seurat 3.1.5
+
+
+
+
+Take output from preprocessing, and get ready for analysis.
+drop remaining out small outlier clusters (ex_16, ex_17, 17, 18), low quality clusters(ex_13), or mixed clusters (11,14) then split data into Rhombic lip-derived (RL) and ventricular zone-derived (VZ), rename clusters to the names found in the paper and come up with a color scheme.
+
+load data 
+```{r}
+setwd('~/postdoc2/DCN_sequencing/scRNAseq/plateseq/Novaseq31/')
+load('DCN_finalclustering.RData')
+load('ex_celltypes.RData')
+load('inh_celltypes.RData')
+```
+
+```{r}
+Idents(dcn)<-"final.clusters"
+RL<-subset(dcn,idents=c("ex_7","ex_10","ex_12","ex_5","ex_15","ex_2","ex_6","ex_0","ex_14","ex_1","ex_4","ex_8","ex_11","ex_9",'gly_4'))
+RL$final.clusters<-factor(RL$final.clusters,levels=c("ex_15","ex_2","ex_6","ex_12","ex_5","ex_10","ex_7","ex_9","gly_4","ex_11","ex_8","ex_4","ex_1","ex_0",'ex_14'))
+
+#rename clusters
+RL<-RenameIdents(RL,"ex_7"="3A1","ex_10"="2A1","ex_12"="2A2_1","ex_5"="2A2_2","ex_15"="1A1","ex_2"="1A2_1","ex_6"="1A2_2","ex_0"="3B1","ex_14"="3B2","ex_1"="2B1_1",
+             "ex_4"="2B1_2","ex_8"="2B2","ex_11"="1B3","ex_9"="1B1",'gly_4'="1B2_gly")
+RL$final.clusters1<-Idents(RL)
+Idents(RL)<-'final.clusters'
+RL<-RenameIdents(RL,"ex_7"="Lat.A1","ex_10"="IntA.A1","ex_12"="IntP.A1","ex_5"="IntP.A2","ex_15"="Med.A1","ex_2"="MedL.A1","ex_6"="MedL.A2","ex_0"="Lat.B1","ex_14"="Lat.B2","ex_1"="IntA.B1",
+             "ex_4"="IntA.B2","ex_8"="IntP.B1","ex_11"="MedDL.B1","ex_9"="Med.B1",'gly_4'="MedL.Bgly")
+RL$final.clusters2<-Idents(RL)
+
+
+#reorder
+RL$final.clusters<-factor(RL$final.clusters,levels(RL$final.clusters)[c(5,6,7,2,3,4,1,14,15,13,10,11,12,8,9)])
+RL$final.clusters1<-factor(RL$final.clusters1,levels(RL$final.clusters1)[c(5,6,7,2,3,4,1,14,15,13,10,11,12,8,9)])
+RL$final.clusters2<-factor(RL$final.clusters2,levels(RL$final.clusters2)[c(5,6,7,2,3,4,1,14,15,13,10,11,12,8,9)])
+
+
+#rename DCN
+Idents(RL)<-'DCN'
+RL<-RenameIdents(RL,"1"="Med","2"="Int","3"="Lat")
+RL$DCN<-Idents(RL)
+
+#define classes
+Idents(RL)<-'final.clusters2'
+RL$classes<-as.factor(as.numeric(grepl("B",RL$final.clusters2)))
+levels(RL$classes)<-c("ClassA","ClassB")
+```
+
+```{r}
+RL <- FindVariableFeatures(object = RL,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+RL <- ScaleData(object = RL,vars.to.regress = c('FACS','nFeature_RNA'))
+
+source('~/postdoc2/Gedankenpapers/CNevomanuscript/code/snRNAseq/helperfunctions/pc_modification_functions_S3_forRNA.R')
+RL<-RunTruncatedPCA(RL,n.genes.pc = 60)
+ElbowPlot(object = RL)
+```
+
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#RL <- JackStraw(object = RL, dims=20)
+#RL <- ScoreJackStraw(RL,dims=1:20)
+#JackStrawPlot(object = RL,dims=1:20)
+```
+
+```{r}
+usefuldims=1:16
+dims.remove=c()
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+
+```{r}
+RL<- FindNeighbors(object = RL,dims=usefuldims)
+```
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+RL <- RunTSNE(object = RL, dims = usefuldims, perplexity=20, dim.embed = 2)
+
+p1<-DimPlot(object = RL, reduction = 'tsne', label=T,pt.size = 1,group.by = 'final.clusters2',repel = T)+NoLegend()
+p2<-DimPlot(object = RL, reduction = 'tsne', label=F,group.by = 'DCN',pt.size = 1)+NoLegend()
+p3<-DimPlot(object = RL, reduction = 'tsne', label=TRUE,group.by = 'FACS')
+
+(p1 | p2 | p3)
+```
+
+
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+getPalette = colorRampPalette(brewer.pal(9, "YlOrRd"))
+pal1<-getPalette(12)
+getPalette = colorRampPalette(brewer.pal(9, "GnBu"))
+pal2<-getPalette(15)
+RLpal<-c(pal1[(12-7+1):12],pal2[(15-8+1):15])
+
+
+
+DimPlot(object = RL, reduction = 'tsne', label=F,repel = F,pt.size = 1.5)+ scale_color_manual(values=RLpal)
+
+
+```
+```{r, fig.height=5, fig.width=15}
+p1<-DimPlot(object = RL, reduction = 'tsne', label=F,repel = F,pt.size = 1.5)+ scale_color_manual(values=RLpal)
+p2<-DimPlot(object = RL, reduction = 'tsne', label=F,group.by = 'DCN',pt.size = 1.5)
+p3<-DimPlot(object = RL, reduction = 'tsne', label=F,group.by = 'FACS',pt.size=1.5)
+(p1 | p2 | p3)
+```
+
+```{r}
+VZ<-subset(dcn,idents=c("inh_1","gly_0","gly_1","gly_2","gly_3"))
+VZ$final.clusters<-factor(VZ$final.clusters,levels=c("inh_1","gly_0","gly_1","gly_2","gly_3"))
+#rename clusters
+VZ<-RenameIdents(VZ,"inh_1"="Inh1","gly_0"="Inh2.1","gly_1"="Inh2.2","gly_2"="Inh2.3","gly_3"="Inh3")
+VZ$final.clusters2<-Idents(VZ)
+
+
+#rename CN
+Idents(VZ)<-'DCN'
+VZ<-RenameIdents(VZ,"1"="Med","2"="Int","3"="Lat")
+VZ$DCN<-Idents(VZ)
+Idents(VZ)<-'final.clusters2'
+```
+
+
+```{r}
+VZ <- FindVariableFeatures(object = VZ,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+VZ <- ScaleData(object = VZ,vars.to.regress = c('FACS','nFeature_RNA'))
+
+
+VZ<-RunTruncatedPCA(VZ,n.genes.pc = 60)
+ElbowPlot(object = VZ)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#VZ <- JackStraw(object = VZ, dims=20)
+#VZ <- ScoreJackStraw(VZ,dims=1:20)
+#JackStrawPlot(object = VZ,dims=1:20)
+```
+```{r}
+usefuldims=1:5
+dims.remove=c()
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+
+```{r}
+VZ<- FindNeighbors(object = VZ,dims=usefuldims)
+```
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+VZ <- RunTSNE(object = VZ, dims = usefuldims, perplexity=30, dim.embed = 2)
+
+p1<-DimPlot(object = VZ, reduction = 'tsne', label=T,pt.size = 1)+NoLegend()
+p2<-DimPlot(object = VZ, reduction = 'tsne', label=F,group.by = 'DCN',pt.size = 1)+NoLegend()
+p3<-DimPlot(object = VZ, reduction = 'tsne', label=TRUE,group.by = 'FACS')
+(p1 | p2 | p3)
+```
+
+
+```{r,fig.height=5, fig.width=15}
+
+getPalette = colorRampPalette(brewer.pal(9, "BuGn"))
+pal1<-getPalette(7)
+getPalette = colorRampPalette(brewer.pal(9, "Greys"))
+pal2<-getPalette(1)
+VZpal<-c('#800080',rev(pal1[(7-4+1):7]))
+VZpal<-c('#800080',rev(pal1[(7-4+1):6]),'#696969')
+
+#pal<-pal1[(8-5+1):8]
+
+
+p1<-DimPlot(object = VZ, reduction = 'tsne', label=F,repel = F,pt.size = 1.5)+ scale_color_manual(values=VZpal)
+p2<-DimPlot(object = VZ, reduction = 'tsne', label=F,group.by = 'DCN',pt.size = 1.5)
+p3<-DimPlot(object = VZ, reduction = 'tsne', label=F,group.by = 'FACS',pt.size=1.5)
+
+(p1 | p2 | p3)
+
+```
+
+
+make merged plot of these clusters
+```{r}
+merged<-merge(RL,VZ)
+merged$DCN<-as.factor(merged$DCN)
+merged$DCN<-factor(merged$DCN,levels(merged$DCN)[c(3,1,2)])
+
+merged$final.clusters2<-as.factor(merged$final.clusters2)
+merged$final.clusters2<-factor(merged$final.clusters2,c(levels(RL$final.clusters2),levels(VZ$final.clusters2)))
+
+```
+```{r}
+merged <- FindVariableFeatures(object = merged,selection.method = "vst",nfeatures = 2000,verbose=FALSE)
+merged <- ScaleData(object = merged,vars.to.regress = c('FACS','nFeature_RNA'))
+
+
+
+merged<-RunTruncatedPCA(merged,n.genes.pc = 60,npcs=40)
+ElbowPlot(object = merged)
+```
+
+
+```{r, fig.height=6, fig.width=10, warning=FALSE}
+#merged <- JackStraw(object = merged, dims=30)
+#merged <- ScoreJackStraw(merged,dims=1:30)
+#JackStrawPlot(object = merged,dims=1:30)
+```
+```{r}
+usefuldims=1:25
+dims.remove=c()
+usefuldims=usefuldims[!usefuldims %in% dims.remove]
+```
+
+
+```{r, fig.height=5, fig.width=15, message=FALSE, warnings=FALSE}
+merged<- FindNeighbors(object = merged,dims=usefuldims)
+
+merged <- RunTSNE(object = merged, dims = usefuldims, perplexity=20, dim.embed = 2)
+Idents(merged)<-'final.clusters2'
+
+p1<-DimPlot(object = merged, reduction = 'tsne', label=F,pt.size = 1.5)+ scale_color_manual(values=c(RLpal,VZpal))
+p2<-DimPlot(object = merged, reduction = 'tsne', label=F,group.by = 'DCN',pt.size = 1.5)
+p3<-DimPlot(object = merged, reduction = 'tsne', label=F,group.by = 'FACS',pt.size=1.5)
+(p1 | p2 | p3)
+```
+```{r,fig.width=6,fig.height=5}
+p1+
+guides(fill=guide_legend(ncol=2))
+```
+```{r,fig.width=8,fig.height=6}
+FeaturePlot(merged,c("Snap25","Slc17a6","Gad1","Slc6a5"),pt.size = 1.5)
+```
+
+
+define subarea color scheme
+define useful area colorscheme
+```{r}
+library(RColorBrewer)
+paired<-brewer.pal(n = 12, name = "Paired")
+subareapal<-paired[c(5,6,8,10,2,4,3)]
+```
+
+
+```{r}
+
+```
+
