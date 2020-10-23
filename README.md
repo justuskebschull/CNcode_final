@@ -1,4 +1,4 @@
-# Custom analyis code to accompany the manuscript "Cerebellar nuclei evolved by repeatedly duplicating a conserved cell type set" by Kebschull et al. 2020
+# Custom analyis code to accompany the manuscript "Cerebellar nuclei evolved by repeatedly duplicating a conserved cell-type set" by Kebschull et al. 2020
 #
  
 Seurat data objects for snRNAseq analysis are available from GEO.
