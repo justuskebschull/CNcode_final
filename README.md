@@ -15,6 +15,6 @@ mouse excitatory https://cellxgene.cziscience.com/d/64d8eff4-64ba-485a-9489-822b
 
 mouse inhibitory https://cellxgene.cziscience.com/d/100c7cd1-dd87-4255-a41d-ff3a6d93daa8.cxg/
 
-human excitatory/lateral https://cellxgene.cziscience.com/d/f9a84edb-f410-4c4a-93e2-f2b89cf15386.cxg/
+human excitatory https://cellxgene.cziscience.com/d/148569bf-c6b2-4989-896e-d254ed0db1db.cxg/
 
-human inhibitory https://cellxgene.cziscience.com/d/4173c415-f1a3-4980-8936-2a2902bf9f42.cxg/
+human inhibitory https://cellxgene.cziscience.com/d/b8032d54-592d-4b46-b308-fea0ac59013b.cxg/
