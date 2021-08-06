@@ -1,0 +1,63 @@
+---
+title: "wholebrain dendrogram"
+output: 
+  pdf_document: 
+    keep_tex: yes
+keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load projection densities from supplemental table and try to plot a dendorgram.
+
+load data
+
+```{r}
+data<-read.csv(file = "~/postdoc2/DCN_tracing/m_files/anterogradetracing_round8_10/test.csv")
+data<-data[,1:23]
+```
+
+
+```{r}
+library(ComplexHeatmap)
+library(dendsort)
+library(dendextend)
+library(circlize)
+library(pvclust)
+result <- pvclust(as.matrix(data), nboot=10000,method.hclust = "complete",method.dist = function(z){as.dist(1-cor(z,use="pa",method="spearman"))})
+
+```
+```{r,fig.width=5,fig.height=4}
+
+pal=c('#00A651','#EC008C','#0072BD','#00AEEF')
+sites=as.factor(c(rep("Meda",5),rep("Medp",5),rep("Int",6),rep("Lat",7)))
+levels(sites)<-c(1,2,3,4)
+
+
+
+bars=data.frame(animal=pal[(sites)]);
+
+
+
+
+dend <- (as.dendrogram(result))
+dend %>% pvclust_show_signif_gradient(result,signif_type = 'au',
+                                      signif_col_fun = colorRampPalette(c('white','black'))) %>%
+  set("nodes_pch", 19) %>%
+  set("branches_lwd", 2) %>%
+   plot()
+colored_bars(colors = bars, dend = dend, sort_by_labels_order = TRUE,y_shift=0.02)
+
+result %>% text
+
+
+```
+
+
+
+
+
+
+
